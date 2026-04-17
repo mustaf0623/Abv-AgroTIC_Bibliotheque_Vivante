@@ -88,7 +88,18 @@ body::before{
     radial-gradient(ellipse 70% 90% at 100% 100%, rgba(0,201,154,.06) 0%, transparent 50%),
     radial-gradient(ellipse 50% 50% at 50% 50%, rgba(42,28,10,.8) 0%, transparent 100%);
 }
-
+/* ══ CORRECTIFS QUIZ ══ */
+.eq-opt.correct { 
+  background-color: #3a7035 !important; 
+  color: #ffffff !important; 
+  border-color: #8fcc7a !important;
+  opacity: 1 !important;
+}
+.eq-opt.wrong { 
+  background-color: #e87a5b !important; 
+  color: #ffffff !important; 
+  opacity: 1 !important;
+}
 /* ══ LAYOUT ══ */
 #app{position:relative;z-index:1;max-width:500px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
 
@@ -4983,41 +4994,35 @@ function renderFallbackQuiz(notion){
 }
 
 function selectAnswer(chosen, correct, dataEncoded, notionId) {
-    // 1. On récupère la carte et les boutons
-    const card = document.querySelector('.quiz-card');
+    const card = document.querySelector('.quiz-card') || document.getElementById('eq-card');
     if (!card) return;
     const options = card.querySelectorAll('.eq-opt');
 
-    // 2. GESTION VISUELLE (Vert / Rouge / Transparence)
+    // 1. Visuel
     options.forEach(btn => {
-        btn.disabled = true; // On bloque les clics
+        btn.disabled = true;
         const optVal = btn.getAttribute('data-opt');
         
         if (optVal === correct) {
-            btn.classList.add('correct'); // La bonne réponse devient VERTE
+            btn.classList.add('correct');
         } else {
-            if (optVal === chosen) {
-                btn.classList.add('wrong'); // Ton mauvais choix devient ROUGE
-            }
-            btn.style.opacity = '0.4'; // Les autres s'effacent un peu
+            if (optVal === chosen) btn.classList.add('wrong');
+            btn.style.opacity = '0.4';
         }
     });
 
-    // 3. GESTION DU SCORE (On utilise l'ID de la notion en cours)
+    // 2. Score (Sauvegarde dans 'rd')
     if (chosen === correct) {
-        // On récupère l'ID via la variable globale si notionId est vide
-        let idToSave = notionId || (DATA[popIdx] ? DATA[popIdx].id : null);
+        // Sécurité : si notionId est absent, on prend celui de la notion ouverte
+        const idToSave = notionId || (DATA[popIdx] ? DATA[popIdx].id : null);
         
-        if (idToSave) {
-            // Si l'ID n'est pas déjà dans la liste 'read'
-            if (!read.includes(idToSave)) {
-                read.push(idToSave);
-                // Sauvegarde sous la clé 'rd' (ton STATE)
-                localStorage.setItem('rd', JSON.stringify(read));
-                
-                // Mise à jour visuelle du progrès
-                if (typeof renderProgress === 'function') renderProgress();
-            }
+        if (idToSave && !read.includes(idToSave)) {
+            read.push(idToSave);
+            localStorage.setItem('rd', JSON.stringify(read));
+            
+            // Mise à jour visuelle immédiate des compteurs
+            if (typeof renderProgress === 'function') renderProgress();
+            if (typeof updateStats === 'function') updateStats();
         }
     }
 }
@@ -5268,39 +5273,25 @@ function dismissIB(){ var b=document.getElementById("ib"); if(b) b.remove(); }
   // ═══════════════════════════════════════════════
 //   SYSTÈME DE NOTIFICATION INTELLIGENT (LES 3 CAS)
 // ═══════════════════════════════════════════════
-
+// Cas 1
 function sendSmartNotification(notion) {
- // CAS 1 : L'application est ouverte et visible à l'écran
-  if (document.visibilityState === 'visible') {
+ if (document.visibilityState === 'visible') {
     const popup = document.getElementById('popup');
-    const pTitle = document.getElementById('pTitle');
-    const pPrev  = document.getElementById('pPrev');
-    const pTags  = document.getElementById('pTags');
-    
-    if (popup && pTitle) {
-      // 1. On définit la notion actuelle pour que le quiz sache quoi charger
-      popIdx = typeof DATA !== 'undefined' ? DATA.indexOf(notion) : -1;
+    if (popup) {
+      // On identifie la notion
+      popIdx = DATA.indexOf(notion);
       
-      // 2. IMPORTANT : On marque la notion comme "vue" pour la liste de progrès
-      // On utilise 'read' et 'rd' comme dans ton STATE
+      // On marque comme lue dans 'rd'
       if (!read.includes(notion.id)) {
         read.push(notion.id);
         localStorage.setItem('rd', JSON.stringify(read));
       }
-
-      // 3. On remplit le visuel du popup
-      pTitle.textContent = notion.title;
-      pPrev.textContent  = notion.preview;
-      if(pTags && notion.badgeLabels) {
-         pTags.innerHTML = notion.badgeLabels.map((l,i) => 
-           `<span class="badge ${notion.badges[i]}">${l}</span>`).join('');
-      }
       
-      // 4. On affiche enfin le popup
+      // Affichage
+      document.getElementById('pTitle').textContent = notion.title;
       popup.classList.add('open');
       
-      // 5. On met à jour l'affichage des stats si besoin
-      if(typeof renderProgress === 'function') renderProgress();
+      if (typeof renderProgress === 'function') renderProgress();
     }
   }
   // CAS 2 : L'application est fermée/en arrière-plan MAIS internet est activé
