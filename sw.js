@@ -6,7 +6,7 @@
 
 const CACHE_NAME = "agrotic-v2";
 const ASSETS = [
-  "/",
+  "./",
   "/index.html",
   "/manifest.json",
   "/icon-192.png",
