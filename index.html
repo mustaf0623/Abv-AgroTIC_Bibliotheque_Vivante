@@ -5099,49 +5099,53 @@ function getMasteryBadge(notionId){
   return `<span class="mastery-badge ${classes[m]}">${['','★','★★','★★★'][m]} ${labels[m]}</span>`;
 }
 function selectAnswer(chosen, correct, dataEncoded, notionId) {
-    // 1. On récupère TOUS les boutons du quiz (les options)
-    const options = document.querySelectorAll('.eq-opt');
-    if (!options || options.length === 0) return;
+    const card = document.getElementById('eq-card');
+    if (!card) return;
+    const options = card.querySelectorAll('.eq-opt');
 
-    // 2. On boucle sur chaque bouton pour changer le visuel
-    options.forEach((btn, i) => {
-        btn.disabled = true; // On bloque les clics pour ne pas tricher
+    // 1. VISUEL : On utilise l'INDEX du bouton (0, 1, 2, 3), et pas 'data-opt'
+    options.forEach((btn, index) => {
+        btn.disabled = true; // Empêche de recliquer
         
-        if (i === correct) {
-            // C'est la BONNE réponse : VERT + OPAQUE
+        if (index === correct) {
+            // BONNE RÉPONSE
+            btn.classList.add('correct');
             btn.style.setProperty('background-color', '#3a7035', 'important');
             btn.style.setProperty('color', '#ffffff', 'important');
             btn.style.setProperty('opacity', '1', 'important');
-            btn.classList.add('correct');
-        } else if (i === chosen) {
-            // C'est TA MAUVAISE réponse : ROUGE + OPAQUE
+        } else if (index === chosen) {
+            // MAUVAISE RÉPONSE CLICQUÉE
+            btn.classList.add('wrong');
             btn.style.setProperty('background-color', '#e87a5b', 'important');
             btn.style.setProperty('color', '#ffffff', 'important');
             btn.style.setProperty('opacity', '1', 'important');
-            btn.classList.add('wrong');
         } else {
-            // Les autres réponses : ASSOMBRIES (Translucides)
-            btn.style.setProperty('opacity', '0.2', 'important');
+            // LES AUTRES BOUTONS
+            btn.style.setProperty('opacity', '0.3', 'important');
         }
     });
 
-    // 3. Afficher les explications (le texte qui explique pourquoi c'est vrai/faux)
+    // 2. AFFICHER LES EXPLICATIONS ET LE BOUTON "CONTINUER"
     const expl = document.getElementById('eq-expl');
+    const fact = document.getElementById('eq-fact');
     const nextBtn = document.getElementById('eq-next');
-    if (expl) { expl.style.display = 'block'; expl.classList.add('show'); }
-    if (nextBtn) { nextBtn.style.display = 'block'; nextBtn.classList.add('show'); }
+    
+    if (expl) expl.style.display = 'block';
+    if (fact) fact.style.display = 'block';
+    if (nextBtn) {
+        nextBtn.style.display = 'block';
+        nextBtn.classList.add('show');
+    }
 
-    // 4. SAUVEGARDE DU SCORE (Clé 'rd' pour le progrès)
+    // 3. SAUVEGARDE DU PROGRÈS
     if (chosen === correct) {
-        // On vérifie si l'ID est bien là, sinon on le cherche dans la notion active
-        let idToSave = notionId || (typeof _curNotion !== 'undefined' ? _curNotion.id : null);
-        
-        if (idToSave && !read.includes(idToSave)) {
-            read.push(idToSave);
-            localStorage.setItem('rd', JSON.stringify(read)); // On sauvegarde dans la mémoire
+        if (notionId && !read.includes(notionId)) {
+            read.push(notionId);
+            localStorage.setItem('rd', JSON.stringify(read));
             
-            // On met à jour les graphiques de progrès tout de suite
+            // Mise à jour visuelle des jauges de progrès
             if (typeof renderProgress === 'function') renderProgress();
+            if (typeof updateStats === 'function') updateStats();
         }
     }
 }
