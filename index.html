@@ -5004,60 +5004,6 @@ function renderFallbackQuiz(notion){
     </div>`;
 }
 
-function selectAnswer(chosen, correct, dataEncoded, notionId) {
-  // 1. On récupère TOUS les boutons du quiz
-  // On utilise un sélecteur large pour être sûr de les trouver
-  const options = document.querySelectorAll('.eq-opt');
-  if (!options || options.length === 0) return;
-
-  // 2. On traite chaque bouton par son INDEX
-  options.forEach((btn, i) => {
-    btn.disabled = true; // On bloque les clics
-    
-    if (i === correct) {
-      // C'est la bonne réponse
-      btn.classList.add('correct');
-      btn.style.opacity = "1";
-      btn.style.backgroundColor = "#3a7035"; // Vert forcé
-      btn.style.color = "#ffffff";
-    } else if (i === chosen) {
-      // C'est ton mauvais choix
-      btn.classList.add('wrong');
-      btn.style.opacity = "1";
-      btn.style.backgroundColor = "#e87a5b"; // Rouge forcé
-      btn.style.color = "#ffffff";
-    } else {
-      // Les autres
-      btn.style.opacity = "0.3";
-    }
-  });
-
-  // 3. Afficher les explications
-  const expl = document.getElementById('eq-expl');
-  const nextBtn = document.getElementById('eq-next');
-  if (expl) { expl.classList.add('show'); expl.style.display = "block"; }
-  if (nextBtn) { nextBtn.classList.add('show'); nextBtn.style.display = "block"; }
-
-  // 4. SAUVEGARDE DU PROGRÈS (La clé 'rd')
-  if (chosen === correct) {
-    // Si on n'a pas l'ID, on le récupère via DATA et popIdx
-    const idToSave = notionId || (typeof DATA !== 'undefined' && DATA[popIdx] ? DATA[popIdx].id : null);
-    
-    if (idToSave && !read.includes(idToSave)) {
-      read.push(idToSave);
-      localStorage.setItem('rd', JSON.stringify(read));
-      
-      // Mise à jour visuelle immédiate du score dans l'appli
-      if (typeof renderProgress === 'function') renderProgress();
-      if (typeof updateStats === 'function') updateStats();
-      if (typeof showXPToast === 'function') showXPToast("+1 Notion apprise !", "success");
-    }
-    setNotion_mastery(idToSave, 2);
-  } else {
-    const idToSave = notionId || (DATA[popIdx] ? DATA[popIdx].id : null);
-    setNotion_mastery(idToSave, 1);
-  }
-}
 function skipQuiz(notionId){
   setNotion_mastery(notionId, Math.max(1, getNotion_mastery(notionId)));
   closeExpert();
@@ -5152,7 +5098,53 @@ function getMasteryBadge(notionId){
   const classes = ['','mastery-1','mastery-2','mastery-3'];
   return `<span class="mastery-badge ${classes[m]}">${['','★','★★','★★★'][m]} ${labels[m]}</span>`;
 }
+function selectAnswer(chosen, correct, dataEncoded, notionId) {
+    // 1. On récupère TOUS les boutons du quiz (les options)
+    const options = document.querySelectorAll('.eq-opt');
+    if (!options || options.length === 0) return;
 
+    // 2. On boucle sur chaque bouton pour changer le visuel
+    options.forEach((btn, i) => {
+        btn.disabled = true; // On bloque les clics pour ne pas tricher
+        
+        if (i === correct) {
+            // C'est la BONNE réponse : VERT + OPAQUE
+            btn.style.setProperty('background-color', '#3a7035', 'important');
+            btn.style.setProperty('color', '#ffffff', 'important');
+            btn.style.setProperty('opacity', '1', 'important');
+            btn.classList.add('correct');
+        } else if (i === chosen) {
+            // C'est TA MAUVAISE réponse : ROUGE + OPAQUE
+            btn.style.setProperty('background-color', '#e87a5b', 'important');
+            btn.style.setProperty('color', '#ffffff', 'important');
+            btn.style.setProperty('opacity', '1', 'important');
+            btn.classList.add('wrong');
+        } else {
+            // Les autres réponses : ASSOMBRIES (Translucides)
+            btn.style.setProperty('opacity', '0.2', 'important');
+        }
+    });
+
+    // 3. Afficher les explications (le texte qui explique pourquoi c'est vrai/faux)
+    const expl = document.getElementById('eq-expl');
+    const nextBtn = document.getElementById('eq-next');
+    if (expl) { expl.style.display = 'block'; expl.classList.add('show'); }
+    if (nextBtn) { nextBtn.style.display = 'block'; nextBtn.classList.add('show'); }
+
+    // 4. SAUVEGARDE DU SCORE (Clé 'rd' pour le progrès)
+    if (chosen === correct) {
+        // On vérifie si l'ID est bien là, sinon on le cherche dans la notion active
+        let idToSave = notionId || (typeof _curNotion !== 'undefined' ? _curNotion.id : null);
+        
+        if (idToSave && !read.includes(idToSave)) {
+            read.push(idToSave);
+            localStorage.setItem('rd', JSON.stringify(read)); // On sauvegarde dans la mémoire
+            
+            // On met à jour les graphiques de progrès tout de suite
+            if (typeof renderProgress === 'function') renderProgress();
+        }
+    }
+}
 </script>
 <!-- ══ ONBOARDING ══ -->
 <div id="onboarding">
