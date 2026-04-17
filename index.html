@@ -5296,6 +5296,9 @@ function sendSmartNotification(notion) {
     const pTags  = document.getElementById('pTags');
     
     if (popup && pTitle) {
+      // ⚠️ LA LIGNE QUI MANQUAIT POUR FAIRE MARCHER LE QUIZ :
+      popIdx = typeof DATA !== 'undefined' ? DATA.indexOf(notion) : -1;
+      
       pTitle.textContent = notion.title;
       pPrev.textContent  = notion.preview;
       if(pTags && notion.badgeLabels) {
@@ -5303,7 +5306,7 @@ function sendSmartNotification(notion) {
       }
       popup.classList.add('open');
     }
-  } 
+  }
   // CAS 2 : L'application est fermée/en arrière-plan MAIS internet est activé
   else if (navigator.onLine) {
     if (Notification.permission === 'granted') {
