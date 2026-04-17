@@ -5226,27 +5226,16 @@ function showWelcomeNotif(cycles){
   try {
     const unread = DATA.filter(n => isNotionUnlocked(n) && !read.includes(n.id));
     if(unread.length === 0) return;
+    
     const picks = unread.slice(0, Math.min(cycles, 3));
-    const popup = document.getElementById('popup');
-    const pTitle = document.getElementById('pTitle');
-    const pPrev  = document.getElementById('pPrev');
-    const pTags  = document.getElementById('pTags');
-    if(!popup || !pTitle) return;
-    // Afficher la première notion non lue
-    const n = picks[0];
-    popIdx = DATA.indexOf(n);
-    pTitle.textContent = n.title;
-    pPrev.textContent  = n.preview;
-    pTags.innerHTML    = n.badgeLabels.map((l,i) =>
-      `<span class="badge ${n.badges[i]}">${l}</span>`).join('');
-    // Badge sur l'onglet home
-    updateHomeBadge(picks.length);
-    // Ouvrir le popup après 1s
-    setTimeout(() => {
-      popup.classList.add('open');
-    }, 1000);
+    
+    // Au lieu d'ouvrir le popup manuellement, on demande au nouveau système intelligent de s'en occuper !
+    picks.forEach(n => {
+      sendSmartNotification(n); 
+    });
+
   } catch(e){ console.error('[AgroTIC] showWelcomeNotif:', e); }
-}
+} 
 
 function updateHomeBadge(count){
   try {
@@ -5294,6 +5283,82 @@ function installApp(){
   _deferredPrompt.userChoice.then(function(){ _deferredPrompt=null; dismissIB(); });
 }
 function dismissIB(){ var b=document.getElementById("ib"); if(b) b.remove(); }
+  // ═══════════════════════════════════════════════
+//   SYSTÈME DE NOTIFICATION INTELLIGENT (LES 3 CAS)
+// ═══════════════════════════════════════════════
+
+function sendSmartNotification(notion) {
+  // CAS 1 : L'application est ouverte et visible à l'écran
+  if (document.visibilityState === 'visible') {
+    const popup = document.getElementById('popup');
+    const pTitle = document.getElementById('pTitle');
+    const pPrev  = document.getElementById('pPrev');
+    const pTags  = document.getElementById('pTags');
+    
+    if (popup && pTitle) {
+      pTitle.textContent = notion.title;
+      pPrev.textContent  = notion.preview;
+      if(pTags && notion.badgeLabels) {
+         pTags.innerHTML = notion.badgeLabels.map((l,i) => `<span class="badge ${notion.badges[i]}">${l}</span>`).join('');
+      }
+      popup.classList.add('open');
+    }
+  } 
+  // CAS 2 : L'application est fermée/en arrière-plan MAIS internet est activé
+  else if (navigator.onLine) {
+    if (Notification.permission === 'granted') {
+      new Notification("Nouvelle Notion : " + notion.title, {
+        body: notion.preview,
+        icon: 'icon-192.png'
+      });
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then(perm => {
+        if (perm === 'granted') {
+          new Notification("Nouvelle Notion : " + notion.title, { body: notion.preview, icon: 'icon-192.png' });
+        }
+      });
+    }
+  } 
+  // CAS 3 : L'utilisateur n'a pas internet (Hors-ligne)
+  else {
+    let count = parseInt(localStorage.getItem('missed_notifs_count') || '0');
+    count++;
+    localStorage.setItem('missed_notifs_count', count);
+    
+    // Badge OS (Sur le menu du téléphone)
+    if ('setAppBadge' in navigator) {
+      navigator.setAppBadge(count).catch(err => console.warn(err));
+    }
+    
+    // Badge Interne (Sur l'onglet home de ton appli)
+    if (typeof updateHomeBadge === 'function') {
+      updateHomeBadge(count);
+    }
+  }
+}
+
+// ── NETTOYAGE AU RETOUR ──
+// Quand l'utilisateur ouvre l'application, on efface les badges du téléphone et de l'onglet
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const missedCount = parseInt(localStorage.getItem('missed_notifs_count') || '0');
+    
+    if (missedCount > 0) {
+      localStorage.setItem('missed_notifs_count', '0');
+      
+      // On efface le badge OS du téléphone
+      if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(e => console.warn(e));
+      
+      // On efface le badge de l'onglet interne
+      if (typeof updateHomeBadge === 'function') updateHomeBadge(0);
+      
+      // Petit message de bienvenue
+      if (typeof showXPToast === 'function') {
+        showXPToast(`Tu avais manqué ${missedCount} notion(s) hors-ligne`, '');
+      }
+    }
+  }
+});
 </script>
 
 <!-- ══ SYSTÈME EXPERT — QUIZ MODAL ══ -->
