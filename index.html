@@ -4976,20 +4976,42 @@ function renderFallbackQuiz(notion){
     </div>`;
 }
 
-function selectAnswer(chosen, correct, dataEncoded, notionId){
-  // 1. On cible UNIQUEMENT le conteneur du quiz actuel pour éviter de modifier d'autres questions
-  const quizContainer = document.getElementById('eq-opts');
-  if(!quizContainer) return;
-  const options = quizContainer.querySelectorAll('.eq-opt');
-  
-  // 2. On rend TOUS les boutons à moitié transparents par défaut et on les désactive
-  options.forEach((btn, i) => {
-    btn.disabled = true; 
-    btn.style.cursor = 'not-allowed';
-    btn.style.opacity = '0.4'; // <--- C'EST CELA QUI RÈGLE LE BUG
-    btn.classList.remove('correct', 'wrong');
-  });
+function selectAnswer(chosen, correct, dataEncoded, notionId) {
+    const card = document.querySelector('.quiz-card');
+    if (!card) return;
+    const options = card.querySelectorAll('.eq-opt');
 
+    // 1. GESTION VISUELLE DES BOUTONS
+    options.forEach(btn => {
+        btn.disabled = true; // Empêche de recliquer
+        const optVal = btn.getAttribute('data-opt');
+        
+        if (optVal === correct) {
+            btn.classList.add('correct'); // La bonne réponse s'allume en VERT
+        } else {
+            if (optVal === chosen) {
+                btn.classList.add('wrong'); // Si erreur, le bouton choisi s'allume en ROUGE
+            }
+            btn.style.opacity = '0.4'; // Les mauvaises réponses non choisies deviennent transparentes
+        }
+    });
+
+    // 2. GESTION DU SCORE ET DU PROGRÈS
+    // On vérifie si l'utilisateur a trouvé la bonne réponse
+    if (chosen === correct) {
+        // 'read' est ta variable globale définie dans ton STATE (liée à 'rd')
+        if (!read.includes(notionId)) {
+            read.push(notionId);
+            // On enregistre dans la mémoire du téléphone (clé 'rd')
+            localStorage.setItem('rd', JSON.stringify(read));
+            
+            // On demande à l'interface de mettre à jour les graphiques de progrès
+            if (typeof renderProgress === 'function') {
+                renderProgress();
+            }
+        }
+    }
+}
   // 3. On illumine UNIQUEMENT la BONNE réponse en la remettant à 100% visible
   if (options[correct]) {
     options[correct].classList.add('correct');
@@ -5288,7 +5310,7 @@ function dismissIB(){ var b=document.getElementById("ib"); if(b) b.remove(); }
 // ═══════════════════════════════════════════════
 
 function sendSmartNotification(notion) {
-  // CAS 1 : L'application est ouverte et visible à l'écran
+ // CAS 1 : L'application est ouverte et visible à l'écran
   if (document.visibilityState === 'visible') {
     const popup = document.getElementById('popup');
     const pTitle = document.getElementById('pTitle');
@@ -5296,15 +5318,29 @@ function sendSmartNotification(notion) {
     const pTags  = document.getElementById('pTags');
     
     if (popup && pTitle) {
-      // ⚠️ LA LIGNE QUI MANQUAIT POUR FAIRE MARCHER LE QUIZ :
+      // 1. On définit la notion actuelle pour que le quiz sache quoi charger
       popIdx = typeof DATA !== 'undefined' ? DATA.indexOf(notion) : -1;
       
+      // 2. IMPORTANT : On marque la notion comme "vue" pour la liste de progrès
+      // On utilise 'read' et 'rd' comme dans ton STATE
+      if (!read.includes(notion.id)) {
+        read.push(notion.id);
+        localStorage.setItem('rd', JSON.stringify(read));
+      }
+
+      // 3. On remplit le visuel du popup
       pTitle.textContent = notion.title;
       pPrev.textContent  = notion.preview;
       if(pTags && notion.badgeLabels) {
-         pTags.innerHTML = notion.badgeLabels.map((l,i) => `<span class="badge ${notion.badges[i]}">${l}</span>`).join('');
+         pTags.innerHTML = notion.badgeLabels.map((l,i) => 
+           `<span class="badge ${notion.badges[i]}">${l}</span>`).join('');
       }
+      
+      // 4. On affiche enfin le popup
       popup.classList.add('open');
+      
+      // 5. On met à jour l'affichage des stats si besoin
+      if(typeof renderProgress === 'function') renderProgress();
     }
   }
   // CAS 2 : L'application est fermée/en arrière-plan MAIS internet est activé
