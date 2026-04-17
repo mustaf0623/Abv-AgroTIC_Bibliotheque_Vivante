@@ -855,37 +855,33 @@ select.ssel{background:rgba(26,18,8,.9);border:1px solid rgba(200,150,70,.2);col
   .hero-title{font-size:2.4rem}
   .s4-grid{grid-template-columns:repeat(5,1fr)}
 }
-  /* --- AMÉLIORATION UX DU QUIZ EXPERT --- */
+ /* --- CORRECTION DU BUG DES BOUTONS QUI S'ILLUMINENT TOUS --- */
 
-/* Transition fluide pour les boutons d'options */
+/* Apparence par défaut des boutons */
 .eq-opt {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s ease;
 }
 
-/* Forcer l'affichage de la bonne réponse */
-.eq-opt.correct {
-  background: rgba(90, 158, 80, 0.2) !important; 
-  border-color: var(--leaf, #3a7035) !important;
-  color: var(--dew, #c5e8b8) !important;
+/* Annule le style par défaut du navigateur quand le bouton est désactivé */
+.eq-opt:disabled {
+  color: inherit;
+  background-color: transparent;
 }
 
-/* Forcer l'affichage de la mauvaise réponse */
-.eq-opt.wrong {
-  background: rgba(214, 48, 48, 0.15) !important;
-  border-color: #d63030 !important;
+/* Force l'affichage VERT SEULEMENT pour la bonne réponse (même désactivée) */
+.eq-opt.correct, .eq-opt.correct:disabled {
+  background: rgba(90, 158, 80, 0.3) !important; 
+  border: 2px solid var(--leaf, #3a7035) !important;
+  color: #c5e8b8 !important;
+  opacity: 1 !important; /* Force la visibilité à 100% */
+}
+
+/* Force l'affichage ROUGE SEULEMENT pour la réponse fausse choisie (même désactivée) */
+.eq-opt.wrong, .eq-opt.wrong:disabled {
+  background: rgba(214, 48, 48, 0.2) !important;
+  border: 2px solid #d63030 !important;
   color: #ffb3b3 !important;
-  opacity: 0.8;
-}
-
-/* Animation de l'explication et du bouton Continuer */
-.eq-explanation.show, .eq-fact-box.show, #eq-next.show {
-  display: block !important;
-  animation: slideUpQuiz 0.4s ease-out forwards;
-}
-
-@keyframes slideUpQuiz {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  opacity: 1 !important; /* Force la visibilité à 100% */
 }
 </style>
 </head>
@@ -4981,70 +4977,66 @@ function renderFallbackQuiz(notion){
 }
 
 function selectAnswer(chosen, correct, dataEncoded, notionId){
-  const options = document.querySelectorAll('.eq-opt');
+  // 1. On cible UNIQUEMENT le conteneur du quiz actuel pour éviter de modifier d'autres questions
+  const quizContainer = document.getElementById('eq-opts');
+  if(!quizContainer) return;
+  const options = quizContainer.querySelectorAll('.eq-opt');
   
-  // Feedback visuel immédiat : effet de pression sur le bouton cliqué
-  if (options[chosen]) {
-    options[chosen].style.transform = "scale(0.95)";
-  }
-  
-  // Désactiver tous les boutons et marquer la bonne/mauvaise réponse
-  options.forEach((btn,i) => {
-    btn.disabled = true;
-    btn.style.cursor = 'default';
-    
-    if(i === correct) {
-      btn.classList.add('correct');
-      btn.innerHTML += ' <span style="float:right">✅</span>';
-    }
-    else if(i === chosen) {
-      btn.classList.add('wrong');
-      btn.innerHTML += ' <span style="float:right">❌</span>';
-    }
+  // 2. On rend TOUS les boutons à moitié transparents par défaut et on les désactive
+  options.forEach((btn, i) => {
+    btn.disabled = true; 
+    btn.style.cursor = 'not-allowed';
+    btn.style.opacity = '0.4'; // <--- C'EST CELA QUI RÈGLE LE BUG
+    btn.classList.remove('correct', 'wrong');
   });
 
-  // Afficher explication et fait clé avec animation
-  const expl = document.getElementById('eq-expl');
-  const fact = document.getElementById('eq-fact');
-  if(expl) {
-    expl.classList.add('show');
-    expl.style.display = 'block';
+  // 3. On illumine UNIQUEMENT la BONNE réponse en la remettant à 100% visible
+  if (options[correct]) {
+    options[correct].classList.add('correct');
+    options[correct].style.opacity = '1';
+    if (!options[correct].innerHTML.includes('✅')) {
+      options[correct].innerHTML += ' <span style="float:right">✅</span>';
+    }
   }
-  if(fact) {
-    fact.classList.add('show');
-    fact.style.display = 'block';
+  
+  // 4. Si tu as cliqué sur une FAUSSE réponse, on l'illumine en rouge à 100%
+  if (chosen !== correct && options[chosen]) {
+    options[chosen].classList.add('wrong');
+    options[chosen].style.opacity = '1';
+    if (!options[chosen].innerHTML.includes('❌')) {
+      options[chosen].innerHTML += ' <span style="float:right">❌</span>';
+    }
   }
 
-  // Afficher bouton continuer et auto-scroll vers lui
+  // --- Affichage explication, scroll et XP (inchangé) ---
+  const expl = document.getElementById('eq-expl');
+  const fact = document.getElementById('eq-fact');
+  if(expl) { expl.classList.add('show'); expl.style.display = 'block'; }
+  if(fact) { fact.classList.add('show'); fact.style.display = 'block'; }
+
   const nextBtn = document.getElementById('eq-next');
   if(nextBtn) {
     nextBtn.style.display = 'block';
     nextBtn.classList.add('show');
-    setTimeout(() => {
-      nextBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 150);
+    setTimeout(() => nextBtn.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
   }
 
-  // Mettre à jour la maîtrise
   const isCorrect = chosen === correct;
-  const currentMastery = getNotion_mastery(notionId);
+  const currentMastery = typeof getNotion_mastery === 'function' ? getNotion_mastery(notionId) : 0;
   if(isCorrect){
     const newMastery = Math.min(currentMastery + 1, 3);
-    setNotion_mastery(notionId, newMastery);
-    // XP bonus pour bonne réponse
-    const notion = DATA.find(n => n.id === notionId);
+    if(typeof setNotion_mastery === 'function') setNotion_mastery(notionId, newMastery);
+    const notion = typeof DATA !== 'undefined' ? DATA.find(n => n.id === notionId) : null;
     const lvlFactor = notion ? (notion.lvl || 1) : 1;
     const bonus = 5 * newMastery * lvlFactor;
-    const xp = addXP(bonus);
+    const xp = typeof addXP === 'function' ? addXP(bonus) : 0;
     if(typeof showXPToast === 'function') showXPToast('+'+bonus+' XP — Bonne réponse !', xp);
     if(typeof checkLevelUp === 'function') checkLevelUp(xp);
   } else {
-    // Réponse fausse → maîtrise reste à 1
-    if(currentMastery < 1) setNotion_mastery(notionId, 1);
+    if(currentMastery < 1 && typeof setNotion_mastery === 'function') setNotion_mastery(notionId, 1);
   }
   
-  // Enregistrer le fait de réponse
-  setFact('answered_'+notionId, isCorrect);
+  if(typeof setFact === 'function') setFact('answered_'+notionId, isCorrect);
   if(typeof refreshProgressUI === 'function') refreshProgressUI();
 }
 function skipQuiz(notionId){
