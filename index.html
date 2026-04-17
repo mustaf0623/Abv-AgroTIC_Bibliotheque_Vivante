@@ -4994,36 +4994,56 @@ function renderFallbackQuiz(notion){
 }
 
 function selectAnswer(chosen, correct, dataEncoded, notionId) {
-    const card = document.querySelector('.quiz-card') || document.getElementById('eq-card');
+    const card = document.getElementById('eq-card');
     if (!card) return;
     const options = card.querySelectorAll('.eq-opt');
 
-    // 1. Visuel
-    options.forEach(btn => {
-        btn.disabled = true;
-        const optVal = btn.getAttribute('data-opt');
+    // 1. Visuel : On traite chaque bouton
+    options.forEach((btn, i) => {
+        btn.disabled = true; // On bloque les clics
         
-        if (optVal === correct) {
+        if (i === correct) {
+            // C'est la bonne réponse : VERT
             btn.classList.add('correct');
+            btn.style.opacity = "1";
+        } else if (i === chosen) {
+            // C'est ton mauvais choix : ROUGE
+            btn.classList.add('wrong');
+            btn.style.opacity = "1";
         } else {
-            if (optVal === chosen) btn.classList.add('wrong');
-            btn.style.opacity = '0.4';
+            // Les autres réponses : ASSOMBRIES
+            btn.style.opacity = "0.3";
         }
     });
 
-    // 2. Score (Sauvegarde dans 'rd')
+    // 2. Affichage des explications (pour que l'utilisateur comprenne)
+    const expl = document.getElementById('eq-expl');
+    const fact = document.getElementById('eq-fact');
+    const nextBtn = document.getElementById('eq-next');
+    if(expl) expl.classList.add('show');
+    if(fact) fact.classList.add('show');
+    if(nextBtn) {
+        nextBtn.style.display = 'block';
+        nextBtn.classList.add('show');
+    }
+
+    // 3. Score & Progrès : Uniquement si la réponse est juste
     if (chosen === correct) {
-        // Sécurité : si notionId est absent, on prend celui de la notion ouverte
-        const idToSave = notionId || (DATA[popIdx] ? DATA[popIdx].id : null);
-        
-        if (idToSave && !read.includes(idToSave)) {
-            read.push(idToSave);
+        // Enregistre dans 'rd' (ton stockage pour le progrès)
+        if (!read.includes(notionId)) {
+            read.push(notionId);
             localStorage.setItem('rd', JSON.stringify(read));
             
-            // Mise à jour visuelle immédiate des compteurs
+            // Met à jour les compteurs visuels immédiatement
             if (typeof renderProgress === 'function') renderProgress();
             if (typeof updateStats === 'function') updateStats();
         }
+        
+        // On augmente aussi la maîtrise du système expert
+        setNotion_mastery(notionId, 2); 
+    } else {
+        // Si c'est faux, on marque au moins comme "vu" (niveau 1)
+        setNotion_mastery(notionId, 1);
     }
 }
 function skipQuiz(notionId){
@@ -5274,26 +5294,21 @@ function dismissIB(){ var b=document.getElementById("ib"); if(b) b.remove(); }
 //   SYSTÈME DE NOTIFICATION INTELLIGENT (LES 3 CAS)
 // ═══════════════════════════════════════════════
 // Cas 1
-function sendSmartNotification(notion) {
- if (document.visibilityState === 'visible') {
-    const popup = document.getElementById('popup');
-    if (popup) {
-      // On identifie la notion
-      popIdx = DATA.indexOf(notion);
-      
-      // On marque comme lue dans 'rd'
-      if (!read.includes(notion.id)) {
+// Dans sendSmartNotification, section CAS 1 :
+if (popup && pTitle) {
+    popIdx = DATA.indexOf(notion);
+    
+    // --- AJOUTE CES LIGNES ICI ---
+    if (!read.includes(notion.id)) {
         read.push(notion.id);
         localStorage.setItem('rd', JSON.stringify(read));
-      }
-      
-      // Affichage
-      document.getElementById('pTitle').textContent = notion.title;
-      popup.classList.add('open');
-      
-      if (typeof renderProgress === 'function') renderProgress();
+        if (typeof renderProgress === 'function') renderProgress();
     }
-  }
+    // -----------------------------
+
+    pTitle.textContent = notion.title;
+    // ... reste du code pour afficher le popup
+}
   // CAS 2 : L'application est fermée/en arrière-plan MAIS internet est activé
   else if (navigator.onLine) {
     if (Notification.permission === 'granted') {
