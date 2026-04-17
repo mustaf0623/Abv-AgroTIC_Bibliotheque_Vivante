@@ -100,6 +100,17 @@ body::before{
   color: #ffffff !important; 
   opacity: 1 !important;
 }
+  .eq-opt.correct { 
+  background-color: #3a7035 !important; 
+  color: #ffffff !important; 
+  opacity: 1 !important; 
+  border: 2px solid #8fcc7a !important;
+}
+.eq-opt.wrong { 
+  background-color: #e87a5b !important; 
+  color: #ffffff !important; 
+  opacity: 1 !important;
+}
 /* ══ LAYOUT ══ */
 #app{position:relative;z-index:1;max-width:500px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
 
@@ -4994,57 +5005,58 @@ function renderFallbackQuiz(notion){
 }
 
 function selectAnswer(chosen, correct, dataEncoded, notionId) {
-    const card = document.getElementById('eq-card');
-    if (!card) return;
-    const options = card.querySelectorAll('.eq-opt');
+  // 1. On récupère TOUS les boutons du quiz
+  // On utilise un sélecteur large pour être sûr de les trouver
+  const options = document.querySelectorAll('.eq-opt');
+  if (!options || options.length === 0) return;
 
-    // 1. Visuel : On traite chaque bouton
-    options.forEach((btn, i) => {
-        btn.disabled = true; // On bloque les clics
-        
-        if (i === correct) {
-            // C'est la bonne réponse : VERT
-            btn.classList.add('correct');
-            btn.style.opacity = "1";
-        } else if (i === chosen) {
-            // C'est ton mauvais choix : ROUGE
-            btn.classList.add('wrong');
-            btn.style.opacity = "1";
-        } else {
-            // Les autres réponses : ASSOMBRIES
-            btn.style.opacity = "0.3";
-        }
-    });
-
-    // 2. Affichage des explications (pour que l'utilisateur comprenne)
-    const expl = document.getElementById('eq-expl');
-    const fact = document.getElementById('eq-fact');
-    const nextBtn = document.getElementById('eq-next');
-    if(expl) expl.classList.add('show');
-    if(fact) fact.classList.add('show');
-    if(nextBtn) {
-        nextBtn.style.display = 'block';
-        nextBtn.classList.add('show');
-    }
-
-    // 3. Score & Progrès : Uniquement si la réponse est juste
-    if (chosen === correct) {
-        // Enregistre dans 'rd' (ton stockage pour le progrès)
-        if (!read.includes(notionId)) {
-            read.push(notionId);
-            localStorage.setItem('rd', JSON.stringify(read));
-            
-            // Met à jour les compteurs visuels immédiatement
-            if (typeof renderProgress === 'function') renderProgress();
-            if (typeof updateStats === 'function') updateStats();
-        }
-        
-        // On augmente aussi la maîtrise du système expert
-        setNotion_mastery(notionId, 2); 
+  // 2. On traite chaque bouton par son INDEX
+  options.forEach((btn, i) => {
+    btn.disabled = true; // On bloque les clics
+    
+    if (i === correct) {
+      // C'est la bonne réponse
+      btn.classList.add('correct');
+      btn.style.opacity = "1";
+      btn.style.backgroundColor = "#3a7035"; // Vert forcé
+      btn.style.color = "#ffffff";
+    } else if (i === chosen) {
+      // C'est ton mauvais choix
+      btn.classList.add('wrong');
+      btn.style.opacity = "1";
+      btn.style.backgroundColor = "#e87a5b"; // Rouge forcé
+      btn.style.color = "#ffffff";
     } else {
-        // Si c'est faux, on marque au moins comme "vu" (niveau 1)
-        setNotion_mastery(notionId, 1);
+      // Les autres
+      btn.style.opacity = "0.3";
     }
+  });
+
+  // 3. Afficher les explications
+  const expl = document.getElementById('eq-expl');
+  const nextBtn = document.getElementById('eq-next');
+  if (expl) { expl.classList.add('show'); expl.style.display = "block"; }
+  if (nextBtn) { nextBtn.classList.add('show'); nextBtn.style.display = "block"; }
+
+  // 4. SAUVEGARDE DU PROGRÈS (La clé 'rd')
+  if (chosen === correct) {
+    // Si on n'a pas l'ID, on le récupère via DATA et popIdx
+    const idToSave = notionId || (typeof DATA !== 'undefined' && DATA[popIdx] ? DATA[popIdx].id : null);
+    
+    if (idToSave && !read.includes(idToSave)) {
+      read.push(idToSave);
+      localStorage.setItem('rd', JSON.stringify(read));
+      
+      // Mise à jour visuelle immédiate du score dans l'appli
+      if (typeof renderProgress === 'function') renderProgress();
+      if (typeof updateStats === 'function') updateStats();
+      if (typeof showXPToast === 'function') showXPToast("+1 Notion apprise !", "success");
+    }
+    setNotion_mastery(idToSave, 2);
+  } else {
+    const idToSave = notionId || (DATA[popIdx] ? DATA[popIdx].id : null);
+    setNotion_mastery(idToSave, 1);
+  }
 }
 function skipQuiz(notionId){
   setNotion_mastery(notionId, Math.max(1, getNotion_mastery(notionId)));
