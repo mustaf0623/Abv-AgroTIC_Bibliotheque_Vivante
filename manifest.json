@@ -2,7 +2,7 @@
   "name": "AgroTIC — Bibliothèque Vivante",
   "short_name": "AgroTIC",
   "description": "Bibliothèque agronomique mobile — notions scientifiques, itinéraires techniques et plantes africaines. Développé par Mouhamadou Moustapha SY.",
-  "start_url": "/",
+  "start_url": "./",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
