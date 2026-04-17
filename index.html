@@ -4949,13 +4949,16 @@ function renderQuiz(notion, quiz){
     </div>
     <div class="eq-body">
       <div class="eq-question">${quiz.question}</div>
-      <div class="eq-options" id="eq-opts">
-        ${quiz.options.map((opt,i) => `
-          <button class="eq-opt" onclick="selectAnswer(${i},${quiz.correct},'${encodeURIComponent(JSON.stringify({explanation:quiz.explanation,key_fact:quiz.key_fact}))}',${notion.id})"
-                  id="eq-opt-${i}">
-            <span class="eq-opt-letter">${letters[i]}</span>
-            <span class="eq-opt-text">${opt}</span>
-          </button>`).join('')}
+     <div class="eq-options" id="eq-opts">
+          ${quiz.options.map((opt, i) => `
+            <button class="eq-opt" 
+                    onclick="selectAnswer(${i}, ${quiz.correct}, ${notion.id || null})" 
+                    id="eq-opt-${i}">
+              <span class="eq-opt-letter">${letters[i]}</span>
+              <span class="eq-opt-text">${opt}</span>
+            </button>
+          `).join('')}
+        </div>
       </div>
       <div class="eq-explanation" id="eq-expl">${quiz.explanation}</div>
       <div class="eq-fact-box" id="eq-fact">
@@ -4964,7 +4967,9 @@ function renderQuiz(notion, quiz){
       </div>
     </div>
     <div class="eq-footer">
-      <button class="eq-btn-skip" onclick="skipQuiz(${notion.id})">Passer</button>
+     <button class="eq-opt" 
+        onclick="selectAnswer(${i}, ${quiz.correct}, null, ${notion.id || null})" 
+        id="eq-opt-${i}">
       <button class="eq-btn-next show" id="eq-next" onclick="afterQuiz(${notion.id})" style="display:none">
         Continuer →
       </button>
@@ -5098,34 +5103,31 @@ function getMasteryBadge(notionId){
   const classes = ['','mastery-1','mastery-2','mastery-3'];
   return `<span class="mastery-badge ${classes[m]}">${['','★','★★','★★★'][m]} ${labels[m]}</span>`;
 }
-function selectAnswer(chosen, correct, dataEncoded, notionId) {
-    const card = document.getElementById('eq-card');
-    if (!card) return;
-    const options = card.querySelectorAll('.eq-opt');
+// ── FONCTION SELECT ANSWER (Compatible IA et Statique) ──
+window.selectAnswer = function(chosen, correct, notionId) {
+    const options = document.querySelectorAll('#eq-card .eq-opt');
+    if (!options || options.length === 0) return;
 
-    // 1. VISUEL : On utilise l'INDEX du bouton (0, 1, 2, 3), et pas 'data-opt'
+    // 1. Appliquer les couleurs
     options.forEach((btn, index) => {
-        btn.disabled = true; // Empêche de recliquer
+        btn.disabled = true; 
         
         if (index === correct) {
-            // BONNE RÉPONSE
             btn.classList.add('correct');
             btn.style.setProperty('background-color', '#3a7035', 'important');
             btn.style.setProperty('color', '#ffffff', 'important');
             btn.style.setProperty('opacity', '1', 'important');
         } else if (index === chosen) {
-            // MAUVAISE RÉPONSE CLICQUÉE
             btn.classList.add('wrong');
             btn.style.setProperty('background-color', '#e87a5b', 'important');
             btn.style.setProperty('color', '#ffffff', 'important');
             btn.style.setProperty('opacity', '1', 'important');
         } else {
-            // LES AUTRES BOUTONS
             btn.style.setProperty('opacity', '0.3', 'important');
         }
     });
 
-    // 2. AFFICHER LES EXPLICATIONS ET LE BOUTON "CONTINUER"
+    // 2. Afficher Explications et Bouton Suivant
     const expl = document.getElementById('eq-expl');
     const fact = document.getElementById('eq-fact');
     const nextBtn = document.getElementById('eq-next');
@@ -5137,18 +5139,19 @@ function selectAnswer(chosen, correct, dataEncoded, notionId) {
         nextBtn.classList.add('show');
     }
 
-    // 3. SAUVEGARDE DU PROGRÈS
+    // 3. Gérer le progrès (uniquement si vrai)
     if (chosen === correct) {
-        if (notionId && !read.includes(notionId)) {
-            read.push(notionId);
+        // On s'assure d'avoir l'ID soit par l'argument, soit via la variable globale
+        let id = notionId || (typeof _curNotion !== 'undefined' && _curNotion ? _curNotion.id : null);
+        
+        if (id && typeof read !== 'undefined' && !read.includes(id)) {
+            read.push(id);
             localStorage.setItem('rd', JSON.stringify(read));
-            
-            // Mise à jour visuelle des jauges de progrès
             if (typeof renderProgress === 'function') renderProgress();
             if (typeof updateStats === 'function') updateStats();
         }
     }
-}
+};
 </script>
 <!-- ══ ONBOARDING ══ -->
 <div id="onboarding">
