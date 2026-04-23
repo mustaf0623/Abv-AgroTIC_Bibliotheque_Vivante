@@ -20,45 +20,18 @@ agrotic-pwa/
 
 ---
 
-## 🚀 OPTION 1 — NETLIFY (2 minutes, recommandé)
 
-1. Va sur **https://app.netlify.com/drop**
-2. **Sélectionne tout le contenu** du dossier `agrotic-pwa`
-   *(Ctrl+A ou Cmd+A pour tout sélectionner)*
-3. **Glisse-dépose** les fichiers dans la zone Netlify
-4. ✅ Ton lien est prêt en 30 secondes !
-   → Ex : `https://agrotic-xxxxx.netlify.app`
 
-> ⚠️ Important : glisser les FICHIERS, pas le dossier lui-même.
+## 📱 COMMENT INSTALLER L'APPLICATION
 
-**Personnaliser l'URL :**
-- Dans Netlify → Site settings → Change site name
-- → `https://agrotic-mms.netlify.app` par exemple
-
----
-
-## 🐙 OPTION 2 — GITHUB PAGES (permanent et gratuit)
-
-1. Crée un compte sur **https://github.com**
-2. Crée un nouveau dépôt public (ex: `agrotic-app`)
-3. Upload tous les fichiers du dossier via "Add file → Upload files"
-4. Va dans **Settings → Pages**
-5. Source : **Deploy from branch → main → / (root)**
-6. ✅ URL disponible en 2 minutes :
-   → `https://ton-pseudo.github.io/agrotic-app`
-
----
-
-## 📱 COMMENT TES AMIS INSTALLENT L'APPLICATION
-
-### Sur Android (Chrome) :
-1. Ouvrir le lien dans Chrome
+### Sur Android :
+1. Ouvrir le lien dans ton navigateur
 2. Une bannière **"Installer AgroTIC"** apparaît automatiquement en bas
 3. Appuyer sur **✅ Installer**
 4. L'icône AgroTIC apparaît sur l'écran d'accueil ✅
 
 ### Sur iPhone (Safari) :
-1. Ouvrir le lien dans **Safari** (pas Chrome)
+1. Ouvrir le lien dans **Safari**
 2. Appuyer sur l'icône **Partager** (carré avec flèche vers le haut)
 3. Défiler et appuyer sur **"Sur l'écran d'accueil"**
 4. Nommer l'app **AgroTIC** → Ajouter
@@ -86,4 +59,4 @@ agrotic-pwa/
 ## 📞 CONTACT
 
 **Mouhamadou Moustapha SY**
-AgroTIC Digital Learning — 2024–2025
+maramoustapha07@gmail.com
