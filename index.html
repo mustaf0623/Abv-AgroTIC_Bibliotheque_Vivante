@@ -90,7 +90,7 @@ body::before{
 }
 /* ══ CORRECTIFS QUIZ — voir définitions complètes plus bas ══ */
 /* ══ LAYOUT ══ */
-#app{position:relative;z-index:1;max-width:500px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+#app{position:relative;z-index:1;max-width:500px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);overflow-y:auto;height:100vh;}
 
 /* ══ SPLASH SCREEN ══ */
 #splash{
@@ -167,7 +167,7 @@ nav{
 .tab:hover:not(.active){color:var(--cream)}
 
 /* ══ PAGES ══ */
-.page{display:none;flex:1;overflow-y:auto;animation:slideIn .28s ease}
+.page{display:none;flex:1;overflow-y:visible;animation:slideIn .28s ease}
 .page.active{display:block}
 @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
@@ -897,12 +897,14 @@ select.ssel{background:rgba(26,18,8,.9);border:1px solid rgba(200,150,70,.2);col
 
 <div id="app">
 
-<!-- HEADER -->
 <header>
   <div class="logo">
-    <div class="logo-mark"><img src="icon-192.png" alt="AgroTIC Logo" /></div>
+    <div class="logo-mark">
+      <img src="icon-192.png" alt="Logo AgroTIC" style="width: 42px; height: 42px; border-radius: 8px; object-fit: cover; display: block;">
+    </div>
     <div class="logo-wordmark">Agro<span>TIC</span></div>
   </div>
+  
   <button class="timer-btn" onclick="triggerPopup()" title="Prochain rappel">
     <div class="ring-wrap">
       <svg class="ring-svg" width="42" height="42" viewBox="0 0 42 42">
@@ -914,7 +916,6 @@ select.ssel{background:rgba(26,18,8,.9);border:1px solid rgba(200,150,70,.2);col
     <div class="timer-lbl">prochain</div>
   </button>
 </header>
-
 <!-- NAV -->
 <nav>
   <button class="tab active" onclick="goPage('home',this)"><span class="ti">🏠</span>Accueil</button>
@@ -957,6 +958,11 @@ select.ssel{background:rgba(26,18,8,.9);border:1px solid rgba(200,150,70,.2);col
     </div>
     <div class="sec">Notions récentes</div>
     <div id="recentList"></div>
+
+    <div class="sec" id="readSec" style="display:none">
+      📖 Notions lues — <span id="readCount" style="color:var(--gold);font-weight:700">0</span>
+    </div>
+    <div id="readList" style="margin-bottom:.75rem"></div>
 
     <div class="sec" id="missedSec" style="display:none">
       📭 Notions manquées — <span id="missedCount" style="color:var(--gold);font-weight:700">0</span>
@@ -3203,21 +3209,21 @@ let _curNotion = null;
 const FACTS_KEY = 'agrotic_facts';
 
 // ══ PROGRESSION RÉELLE ══
-const XP_READ   = 10;  // XP par notion lue
-const XP_SAVE   = 5;   // XP par notion sauvegardée
-const XP_STREAK = 15;  // XP par jour de série
+const XP_READ   = 20;  // XP par notion lue
+const XP_SAVE   = 10;  // XP par notion sauvegardée
+const XP_STREAK = 25;  // XP par jour de série
 
 const LEVELS = [
-  { name:"🌱 Agronome Initié",    min:0,    max:200,  unlocks:1 },
-  { name:"🌿 Agronome Confirmé",  min:200,  max:500,  unlocks:2 },
-  { name:"🌾 Agronome Expert",    min:500,  max:1000, unlocks:3 },
-  { name:"🌳 Agronome Maître",    min:1000, max:2000, unlocks:3 },
-  { name:"🏆 Agronome Émérite",   min:2000, max:99999,unlocks:3 },
+  { name:"🌱 Agronome Initié",    min:0,    max:300,  unlocks:1 },
+  { name:"🌿 Agronome Confirmé",  min:300,  max:700,  unlocks:2 },
+  { name:"🌾 Agronome Expert",    min:700,  max:1400, unlocks:3 },
+  { name:"🌳 Agronome Maître",    min:1400, max:2500, unlocks:3 },
+  { name:"🏆 Agronome Émérite",   min:2500, max:99999,unlocks:3 },
 ];
 
-// Niveau de notions accessible selon XP
-const XP_LVL2 = 600;   // déblocage niveau 2 — 85% notions Niv.1 maîtrisées
-const XP_LVL3 = 1500;  // déblocage niveau 3 — 85% notions Niv.2 maîtrisées
+// Niveau de notions accessible selon XP uniquement (15 notions lues → Niv.2, 35 lues → Niv.3)
+const XP_LVL2 = 300;   // déblocage niveau 2 (≈ 15 notions lues)
+const XP_LVL3 = 800;   // déblocage niveau 3 (≈ 35 notions lues + quiz)
 
 function getMaxNotionLevel(xp){
   if(xp >= XP_LVL3) return 3;
@@ -3236,20 +3242,7 @@ function getMasteryPercentageByLevel(lvl){
 function isNotionUnlocked(n){
   const maxLvl = getMaxNotionLevel(loadXP());
   const notionLvl = (n.lvl||1);
-  
-  if(notionLvl > maxLvl) return false; // XP insuffisant
-  
-  // Vérifier maîtrise 85% du niveau précédent
-  if(notionLvl === 2){
-    const lvl1Mastery = getMasteryPercentageByLevel(1);
-    if(lvl1Mastery < 85) return false;
-  }
-  if(notionLvl === 3){
-    const lvl2Mastery = getMasteryPercentageByLevel(2);
-    if(lvl2Mastery < 85) return false;
-  }
-  
-  return true;
+  return notionLvl <= maxLvl;
 }
 
 function getLvlLabel(lvl){
@@ -3371,6 +3364,8 @@ function checkLevelUp(xp){
         showLvlToast('🎉 Niveau débloqué !', newLevel.name);
         refreshLibraryUnlocks();
         renderMissedNotions && renderMissedNotions();
+  renderSavedNotions  && renderSavedNotions();
+  renderReadNotions   && renderReadNotions();
       }, 400);
     }
   } catch(e){}
@@ -3550,7 +3545,8 @@ function initHome(){
       </div>
       <div class="${read.includes(n.id)?'ncard-read':'ncard-unread'}"></div>
     </div>`).join('');
-  // Notions manquées et sauvegardées
+  // Notions lues, manquées et sauvegardées
+  renderReadNotions();
   renderMissedNotions();
   renderSavedNotions();
 }
@@ -3751,11 +3747,13 @@ function openNotion(n){
     // Initialiser maîtrise si première lecture
     if(getNotion_mastery(n.id) === 0) setNotion_mastery(n.id, 0);
     refreshProgressUI();
+    // Mettre à jour la section "Notions lues"
+    renderReadNotions && renderReadNotions();
   }
-  // Proposer le quiz si la notion n'est pas maîtrisée (mastery < 3)
-  // Cela permet de réviser et d'améliorer progressivement
+  // Proposer le quiz uniquement à la première lecture, ou si jamais tenté (mastery=0)
+  // Pas de quiz si déjà répondu correctement (mastery >= 2)
   const mastery = getNotion_mastery(n.id);
-  if(mastery < 3){
+  if(wasNew || mastery === 0){
     triggerExpertQuiz(n);
   }
   document.getElementById('mCats').innerHTML=n.badgeLabels.map((l,i)=>`<span class="badge ${n.badges[i]}">${l}</span>`).join('')+`<span class="badge" style="background:rgba(26,53,32,.3);color:var(--fern);border:1px solid rgba(90,158,80,.2)">${THEMES[n.theme].icon} ${THEMES[n.theme].label}</span>`;
@@ -3775,6 +3773,35 @@ function closeModal(e){
   }
 }
 // ── Notions manquées (non lues mais débloquées) ──
+function renderReadNotions(){
+  const readSec   = document.getElementById('readSec');
+  const readList  = document.getElementById('readList');
+  const readCountEl = document.getElementById('readCount');
+  if(!readSec || !readList) return;
+  const readNotions = DATA.filter(n => read.includes(n.id));
+  if(readNotions.length === 0){
+    readSec.style.display = 'none';
+    readList.innerHTML = '';
+    return;
+  }
+  readSec.style.display = 'block';
+  readCountEl.textContent = readNotions.length;
+  readList.innerHTML = readNotions.map(n => `
+    <div class="ncard" onclick="openNotion(DATA.find(x=>x.id===${n.id}))">
+      <div class="ncard-icon">${n.icon}</div>
+      <div class="ncard-body">
+        <div class="ncard-title">${n.title}</div>
+        <div class="ncard-excerpt">${n.preview}</div>
+        <div class="ncard-badges">
+          ${n.badgeLabels.map((l,i)=>`<span class="badge ${n.badges[i]}">${l}</span>`).join('')}
+          ${getLvlLabel(n.lvl||1)}
+          <span class="badge" style="background:rgba(106,190,221,.1);color:#6abedd;border:1px solid rgba(106,190,221,.2)">📖 Lue</span>
+        </div>
+      </div>
+      <div class="ncard-read"></div>
+    </div>`).join('');
+}
+
 function renderMissedNotions(){
   const missed = DATA.filter(n => isNotionUnlocked(n) && !read.includes(n.id));
   const missedSec = document.getElementById('missedSec');
@@ -3820,6 +3847,7 @@ function openMissedNotion(id){
         card.style.margin = '0';
         card.style.padding = '0';
         setTimeout(() => {
+          renderReadNotions();
           renderMissedNotions();
           renderSavedNotions();
         }, 350);
@@ -3877,13 +3905,8 @@ function saveN(){
 //  POPUP
 // ══════════════════════════════════════════════════
 function triggerPopup(){
-  const n=DATA[popIdx%DATA.length];
-  document.getElementById('pTitle').textContent=n.title;
-  document.getElementById('pPrev').textContent=n.preview;
-  document.getElementById('pTags').innerHTML=n.badgeLabels.map((l,i)=>`<span class="badge ${n.badges[i]}">${l}</span>`).join('');
-  const p=document.getElementById('popup');
-  p.classList.add('show');
-  setTimeout(closePopup,13000);
+  const n = DATA[popIdx % DATA.length];
+  sendSmartNotification(n);
 }
 function closePopup(){ document.getElementById('popup').classList.remove('show'); }
 function popupOpen(){ closePopup(); openNotion(DATA[popIdx%DATA.length]); }
@@ -5297,54 +5320,48 @@ function dismissIB(){ var b=document.getElementById("ib"); if(b) b.remove(); }
 // ═══════════════════════════════════════════════
 
 function sendSmartNotification(notion) {
-  const popup = document.getElementById('popup');
+  // Demander la permission dès la première interaction (ne bloque pas)
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  const popup  = document.getElementById('popup');
   const pTitle = document.getElementById('pTitle');
+  const pPrev  = document.getElementById('pPrev');
+  const pTags  = document.getElementById('pTags');
 
-  // CAS 1 : L'application est ouverte (popup visible dans l'interface)
-  if (popup && pTitle) {
+  // ── CAS 1 : App visible à l'écran → popup HTML interne ──
+  if (!document.hidden && popup && pTitle) {
     popIdx = DATA.indexOf(notion);
-
     if (!read.includes(notion.id)) {
       read.push(notion.id);
       localStorage.setItem('rd', JSON.stringify(read));
       if (typeof renderProgress === 'function') renderProgress();
     }
-
     pTitle.textContent = notion.title;
-    const pPrev = document.getElementById('pPrev');
     if (pPrev) pPrev.textContent = notion.preview;
-    const pTags = document.getElementById('pTags');
-    if (pTags) pTags.innerHTML = notion.badgeLabels.map((l,i) => `<span class="badge ${notion.badges[i]}">${l}</span>`).join('');
+    if (pTags) pTags.innerHTML = notion.badgeLabels
+      .map((l,i) => `<span class="badge ${notion.badges[i]}">${l}</span>`).join('');
     popup.classList.add('show');
     setTimeout(closePopup, 13000);
 
-  // CAS 2 : L'application est fermée/en arrière-plan MAIS internet est activé
-  } else if (navigator.onLine) {
-    if (Notification.permission === 'granted') {
-      new Notification("Nouvelle Notion : " + notion.title, {
-        body: notion.preview,
-        icon: 'icon-192.png'
-      });
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(perm => {
-        if (perm === 'granted') {
-          new Notification("Nouvelle Notion : " + notion.title, { body: notion.preview, icon: 'icon-192.png' });
-        }
-      });
-    }
+  // ── CAS 2 : App en arrière-plan ET permission accordée → notification OS ──
+  } else if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('🌱 AgroTIC — ' + notion.title, {
+      body: notion.preview,
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+      tag: 'agrotic-notif'
+    });
 
-  // CAS 3 : L'utilisateur n'a pas internet (Hors-ligne)
+  // ── CAS 3 : Permission refusée ou pas encore accordée → badge manqué ──
   } else {
     let count = parseInt(localStorage.getItem('missed_notifs_count') || '0');
     count++;
-    localStorage.setItem('missed_notifs_count', count);
-
-    // Badge OS (Sur le menu du téléphone)
+    localStorage.setItem('missed_notifs_count', String(count));
     if ('setAppBadge' in navigator) {
       navigator.setAppBadge(count).catch(err => console.warn(err));
     }
-
-    // Badge Interne (Sur l'onglet home de ton appli)
     if (typeof updateHomeBadge === 'function') {
       updateHomeBadge(count);
     }
