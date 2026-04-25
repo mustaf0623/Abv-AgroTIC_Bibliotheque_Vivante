@@ -1,19 +1,14 @@
 // .github/scripts/send-push.js
-// Exécuté par GitHub Actions toutes les 45 minutes
-// Envoie une notification push à tous les abonnés
-
-const webpush = require('web-push');
+const webpush = require('./node_modules/web-push');
 
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
 const VAPID_EMAIL   = process.env.VAPID_EMAIL || 'mailto:agrotic@ussein.sn';
-
-// Les subscriptions sont stockées dans un GitHub Secret (JSON array)
 const SUBSCRIPTIONS_JSON = process.env.SUBSCRIPTIONS_JSON || '[]';
 
 async function main() {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-    console.error('[AgroTIC] VAPID keys missing. Add them to GitHub Secrets.');
+    console.error('[AgroTIC] VAPID keys manquantes. Vérifie les GitHub Secrets.');
     process.exit(1);
   }
 
@@ -23,12 +18,12 @@ async function main() {
   try {
     subscriptions = JSON.parse(SUBSCRIPTIONS_JSON);
   } catch(e) {
-    console.log('[AgroTIC] No subscriptions found or invalid JSON.');
+    console.log('[AgroTIC] PUSH_SUBSCRIPTIONS invalide ou vide.');
     process.exit(0);
   }
 
   if (!subscriptions.length) {
-    console.log('[AgroTIC] No subscribers. Nothing to send.');
+    console.log('[AgroTIC] Aucun abonné pour le moment. Pipeline OK.');
     process.exit(0);
   }
 
@@ -48,30 +43,29 @@ async function main() {
     try {
       await webpush.sendNotification(sub, payload);
       sent++;
-      validSubs.push(sub); // Garder les abonnements valides
+      validSubs.push(sub);
+      console.log('[AgroTIC] ✅ Envoyé à:', sub.endpoint.slice(0, 60) + '...');
     } catch(err) {
       if (err.statusCode === 404 || err.statusCode === 410) {
-        console.log('[AgroTIC] Expired subscription removed:', sub.endpoint.slice(0, 50) + '...');
+        console.log('[AgroTIC] 🗑️ Abonnement expiré supprimé.');
         expired++;
-        // Ne pas ajouter aux validSubs → supprimé automatiquement
       } else {
-        console.error('[AgroTIC] Push error:', err.message);
+        console.error('[AgroTIC] ❌ Erreur:', err.message);
         failed++;
-        validSubs.push(sub); // Garder en cas d'erreur temporaire
+        validSubs.push(sub);
       }
     }
   }
 
-  console.log(`[AgroTIC] Résultat: ${sent} envoyés, ${failed} erreurs, ${expired} expirés`);
+  console.log(`\n[AgroTIC] Résultat: ${sent} envoyés ✅ | ${failed} erreurs ❌ | ${expired} expirés 🗑️`);
 
-  // Si des abonnements ont expiré, afficher les nouvelles subscriptions à mettre dans le Secret
   if (expired > 0) {
-    console.log('[AgroTIC] Mets à jour le secret PUSH_SUBSCRIPTIONS avec:');
+    console.log('\n[AgroTIC] Mets à jour le secret PUSH_SUBSCRIPTIONS avec:');
     console.log(JSON.stringify(validSubs));
   }
 }
 
 main().catch(err => {
-  console.error('[AgroTIC] Fatal error:', err);
+  console.error('[AgroTIC] Erreur fatale:', err);
   process.exit(1);
 });
