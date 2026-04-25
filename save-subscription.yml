@@ -1,0 +1,48 @@
+name: AgroTIC — Sauvegarder Subscription Push
+
+on:
+  # Déclenché par l'app via repository_dispatch
+  repository_dispatch:
+    types: [save-push-subscription]
+
+jobs:
+  save-subscription:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Save subscription to GitHub Secret
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
+          REPO: ${{ github.repository }}
+          NEW_SUB: ${{ toJson(github.event.client_payload.subscription) }}
+          CURRENT_SUBS: ${{ secrets.PUSH_SUBSCRIPTIONS }}
+        run: |
+          node -e "
+          const https = require('https');
+
+          const currentSubs = JSON.parse(process.env.CURRENT_SUBS || '[]');
+          const newSub = JSON.parse(process.env.NEW_SUB);
+
+          // Éviter les doublons (même endpoint)
+          const exists = currentSubs.find(s => s.endpoint === newSub.endpoint);
+          if (exists) {
+            console.log('Subscription already exists');
+            process.exit(0);
+          }
+
+          currentSubs.push(newSub);
+          const updatedJson = JSON.stringify(currentSubs);
+
+          console.log('Total subscriptions:', currentSubs.length);
+          console.log('Updated JSON:', updatedJson.slice(0, 100) + '...');
+          // Note: Pour mettre à jour un Secret GitHub via API, utiliser l'API GitHub
+          // La valeur est affichée ici pour mise à jour manuelle si nécessaire
+          console.log('PUSH_SUBSCRIPTIONS to update:', updatedJson);
+          "
