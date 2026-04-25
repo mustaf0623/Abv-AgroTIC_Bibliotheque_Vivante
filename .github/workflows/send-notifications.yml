@@ -9,17 +9,13 @@ jobs:
   send-push:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install web-push
         run: npm install web-push
-        working-directory: .github/scripts
 
       - name: Send push notifications
         env:
@@ -27,5 +23,60 @@ jobs:
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_EMAIL: ${{ secrets.VAPID_EMAIL }}
           SUBSCRIPTIONS_JSON: ${{ secrets.PUSH_SUBSCRIPTIONS }}
-        run: node send-push.js
-        working-directory: .github/scripts
+        run: |
+          node << 'EOF'
+          const webpush = require('./node_modules/web-push');
+          const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
+          const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+          const VAPID_EMAIL   = process.env.VAPID_EMAIL || 'mailto:agrotic@ussein.sn';
+          const SUBS_JSON     = process.env.SUBSCRIPTIONS_JSON || '[]';
+
+          async function main() {
+            if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+              console.error('[AgroTIC] VAPID keys manquantes.');
+              process.exit(1);
+            }
+            webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
+
+            let subscriptions = [];
+            try { subscriptions = JSON.parse(SUBS_JSON); }
+            catch(e) { console.log('[AgroTIC] PUSH_SUBSCRIPTIONS vide.'); process.exit(0); }
+
+            if (!subscriptions.length) {
+              console.log('[AgroTIC] Aucun abonne. Pipeline OK.');
+              process.exit(0);
+            }
+
+            const payload = JSON.stringify({
+              title: 'AgroTIC - Nouvelle notion disponible',
+              body: "Une nouvelle notion t'attend. Ouvre l'app pour gagner des XP !",
+              icon: '/Abv-AgroTIC_Bibliotheque_Vivante/icon-192.png',
+              badge: '/Abv-AgroTIC_Bibliotheque_Vivante/icon-192.png',
+              tag: 'agrotic-scheduled',
+              url: '/Abv-AgroTIC_Bibliotheque_Vivante/'
+            });
+
+            let sent = 0, failed = 0, expired = 0;
+            const validSubs = [];
+
+            for (const sub of subscriptions) {
+              try {
+                await webpush.sendNotification(sub, payload);
+                sent++; validSubs.push(sub);
+                console.log('[AgroTIC] Envoye:', sub.endpoint.slice(0,50) + '...');
+              } catch(err) {
+                if (err.statusCode === 404 || err.statusCode === 410) {
+                  console.log('[AgroTIC] Expire supprime.'); expired++;
+                } else {
+                  console.error('[AgroTIC] Erreur:', err.message); failed++; validSubs.push(sub);
+                }
+              }
+            }
+            console.log('[AgroTIC] ' + sent + ' envoyes | ' + failed + ' erreurs | ' + expired + ' expires');
+            if (expired > 0) {
+              console.log('Nouveau PUSH_SUBSCRIPTIONS:');
+              console.log(JSON.stringify(validSubs));
+            }
+          }
+          main().catch(err => { console.error(err); process.exit(1); });
+          EOF
