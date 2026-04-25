@@ -1,10 +1,8 @@
 name: AgroTIC — Notifications Push
 
 on:
-  # Déclencher toutes les 45 minutes (même si l'app est fermée/killée)
   schedule:
     - cron: '*/45 * * * *'
-  # Permettre aussi le déclenchement manuel (pour tester)
   workflow_dispatch:
 
 jobs:
@@ -21,6 +19,7 @@ jobs:
 
       - name: Install web-push
         run: npm install web-push
+        working-directory: .github/scripts
 
       - name: Send push notifications
         env:
@@ -28,4 +27,5 @@ jobs:
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_EMAIL: ${{ secrets.VAPID_EMAIL }}
           SUBSCRIPTIONS_JSON: ${{ secrets.PUSH_SUBSCRIPTIONS }}
-        run: node .github/scripts/send-push.js
+        run: node send-push.js
+        working-directory: .github/scripts
