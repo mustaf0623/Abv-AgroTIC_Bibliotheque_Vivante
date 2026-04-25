@@ -1,89 +1,92 @@
-// ═══════════════════════════════════════════════
-//  AgroTIC — Service Worker
-//  Mouhamadou Moustapha SY
-//  Version 2.0
-// ═══════════════════════════════════════════════
+/* ══════════════════════════════════════════════════
+   AgroTIC — Service Worker v2.0
+   Gère : cache offline + notifications + badge
+   ══════════════════════════════════════════════════ */
 
-const CACHE_NAME = "agrotic-v2";
-const ASSETS = [
-  "./",
-  "/index.html",
-  "/manifest.json",
-  "/icon-192.png",
-  "/icon-512.png",
-  "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-];
+const CACHE_NAME = 'agrotic-v2';
+const ASSETS = ['/', '/index.html', '/icon-192.png', '/icon-512.png'];
 
-// ── INSTALL : mise en cache de toutes les ressources ──
-self.addEventListener("install", (event) => {
+// ── INSTALLATION : mise en cache des assets ──
+self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log("[AgroTIC SW] Mise en cache des ressources...");
-      return cache.addAll(ASSETS);
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(ASSETS).catch(() => {
+        // Si certains assets manquent (ex: icon-512.png), on continue quand même
+        return cache.addAll(['/', '/index.html']);
+      });
+    })
   );
+  self.skipWaiting();
 });
 
-// ── ACTIVATE : nettoyage des anciens caches ──
-self.addEventListener("activate", (event) => {
+// ── ACTIVATION : nettoyage des anciens caches ──
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => {
-            console.log("[AgroTIC SW] Suppression ancien cache :", key);
-            return caches.delete(key);
-          })
-      )
-    ).then(() => self.clients.claim())
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
   );
+  self.clients.claim();
 });
 
-// ── FETCH : stratégie Cache First puis réseau ──
-self.addEventListener("fetch", (event) => {
-  // Ne pas intercepter les requêtes non-GET
-  if (event.request.method !== "GET") return;
-
+// ── FETCH : stratégie cache-first pour offline ──
+self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        // Ressource en cache : servir immédiatement + mettre à jour en arrière-plan
-        const fetchPromise = fetch(event.request)
-          .then((networkResp) => {
-            if (networkResp && networkResp.status === 200) {
-              const clone = networkResp.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            }
-            return networkResp;
-          })
-          .catch(() => cached);
-        return cached;
-      }
-
-      // Pas en cache : aller chercher sur le réseau
-      return fetch(event.request)
-        .then((networkResp) => {
-          if (!networkResp || networkResp.status !== 200 || networkResp.type === "opaque") {
-            return networkResp;
-          }
-          const clone = networkResp.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return networkResp;
-        })
-        .catch(() => {
-          // Hors-ligne et pas en cache : page de fallback
-          if (event.request.destination === "document") {
-            return caches.match("/index.html");
-          }
-        });
+    caches.match(event.request).then(cached => {
+      return cached || fetch(event.request).catch(() => {
+        // Si offline et pas en cache, retourner index.html
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+      });
     })
   );
 });
 
-// ── MESSAGE : forcer la mise à jour ──
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") {
-    self.skipWaiting();
+// ── NOTIFICATION CLICK : ouvrir l'app au clic ──
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+      // Si l'app est déjà ouverte, la mettre au premier plan
+      for (const client of clients) {
+        if ('focus' in client) return client.focus();
+      }
+      // Sinon ouvrir une nouvelle fenêtre
+      return self.clients.openWindow('/');
+    })
+  );
+});
+
+// ── MESSAGE : afficher une notification depuis l'app ──
+// L'app envoie un message au SW pour déclencher une notification
+self.addEventListener('message', event => {
+  const data = event.data;
+
+  if (data && data.type === 'SHOW_NOTIFICATION') {
+    event.waitUntil(
+      self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: 'agrotic-notif',
+        renotify: true,
+        requireInteraction: false,
+        vibrate: [200, 100, 200],
+        data: { url: '/' }
+      })
+    );
+  }
+
+  if (data && data.type === 'SET_BADGE') {
+    if ('setAppBadge' in self.navigator) {
+      self.navigator.setAppBadge(data.count).catch(() => {});
+    }
+  }
+
+  if (data && data.type === 'CLEAR_BADGE') {
+    if ('clearAppBadge' in self.navigator) {
+      self.navigator.clearAppBadge().catch(() => {});
+    }
   }
 });
