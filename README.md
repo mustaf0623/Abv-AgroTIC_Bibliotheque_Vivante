@@ -46,13 +46,13 @@ agrotic-pwa/
 
 ## ✨ FONCTIONNALITÉS
 
-- 📚 **42 notions agronomiques** sur 10 thèmes scientifiques
-- 🌱 **8 familles botaniques** + 35+ itinéraires techniques détaillés
+- 📚 **136 notions agronomiques** sur 13 thèmes scientifiques
+- 🌱 **9 familles botaniques** + 90+ itinéraires techniques détaillés
 - 🌍 Plantes africaines emblématiques : Karité, Baobab, Moringa, Néré, Fonio, Bissap...
 - 🔔 **Rappels automatiques** toutes les 45 min (configurable)
-- 📈 **Suivi de progression** par thème + système de niveaux XP
+- 📈 **Suivi de progression** par thème + système de niveaux XP et Quizz Systeme Expert
 - 💾 **Hors-ligne** après le premier chargement
-- 🎨 Design luxe éditorial — fonctionne comme une vraie app native
+- 🎨 Design luxe éditorial 
 
 ---
 
