@@ -5401,15 +5401,11 @@ function urlBase64ToUint8Array(base64String) {
   return new Uint8Array([...raw].map(c => c.charCodeAt(0)));
 }
 
-// Détecte si on est sur GitHub Pages ou Netlify
-function getSubscribeEndpoint() {
-  const host = window.location.hostname;
-  if (host.includes('netlify')) return '/.netlify/functions/subscribe';
-  if (host.includes('github.io')) return 'https://api.github.com/repos/mustaf0623/Abv-AgroTIC_Bibliotheque_Vivante/dispatches';
-  return '/.netlify/functions/subscribe'; // fallback
-}
+// JsonStorage — stockage public des subscriptions (accessible mobile + GitHub Action)
+const JSONBIN_URL = 'https://api.jsonstorage.net/items/deed851d-fa9e-427c-94da-fae7dfe10eb7';
+const JSONBIN_KEY = '';
 
-// Abonner l'utilisateur au push serveur
+// Abonner l'utilisateur au push serveur et sauvegarder dans JsonStorage
 async function subscribeToPush(reg) {
   try {
     let sub = await reg.pushManager.getSubscription();
@@ -5420,20 +5416,29 @@ async function subscribeToPush(reg) {
       });
     }
     const subJson = sub.toJSON();
-    const endpoint = getSubscribeEndpoint();
-    const isGitHub = endpoint.includes('api.github.com');
 
-    // Envoyer la subscription au backend (GitHub ou Netlify)
-    const body = isGitHub
-      ? JSON.stringify({ event_type: 'save-push-subscription', client_payload: { subscription: subJson } })
-      : JSON.stringify({ subscription: subJson, userId: 'user_' + Date.now() });
+    // Lire les subscriptions existantes
+    const getRes = await fetch(JSONBIN_URL);
+    const existing = await getRes.json();
+    const list = Array.isArray(existing) ? existing : [];
 
-    const headers = { 'Content-Type': 'application/json' };
-    // Pour GitHub API, le token public est suffisant pour repository_dispatch sur repo public
-    if (isGitHub) headers['Accept'] = 'application/vnd.github.v3+json';
+    // Eviter les doublons
+    if (list.find(s => s.endpoint === subJson.endpoint)) {
+      console.log('[AgroTIC] Déjà abonné.');
+      localStorage.setItem('agrotic_push_subscribed', '1');
+      return;
+    }
 
-    await fetch(endpoint, { method: 'POST', headers, body });
-    console.log('[AgroTIC] Push subscription enregistrée');
+    list.push(subJson);
+
+    // Sauvegarder la liste mise à jour
+    await fetch(JSONBIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(list)
+    });
+
+    console.log('[AgroTIC] Subscription enregistrée (' + list.length + ' abonnés)');
     localStorage.setItem('agrotic_push_subscribed', '1');
   } catch(e) {
     console.warn('[AgroTIC] Push subscription failed:', e.message);
