@@ -75,3 +75,18 @@ main().catch(err => {
   console.error('[AgroTIC] Fatal error:', err);
   process.exit(1);
 });
+// Demande la souscription et l'affiche dans un champ texte sur la page
+navigator.serviceWorker.ready.then(r => {
+  r.pushManager.getSubscription().then(s => {
+    if (s) {
+      // Crée une zone de texte avec le JSON pour pouvoir le copier depuis le téléphone
+      const textArea = document.createElement('textarea');
+      textArea.style.width = '100%';
+      textArea.style.height = '150px';
+      textArea.value = JSON.stringify(s.toJSON());
+      document.body.appendChild(textArea);
+    } else {
+      alert("Aucune souscription générée sur ce téléphone.");
+    }
+  });
+});
