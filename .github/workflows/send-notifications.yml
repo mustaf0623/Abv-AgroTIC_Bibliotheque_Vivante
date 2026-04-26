@@ -22,25 +22,59 @@ jobs:
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_EMAIL: ${{ secrets.VAPID_EMAIL }}
-          SUBSCRIPTIONS_JSON: ${{ secrets.PUSH_SUBSCRIPTIONS }}
+          JSONSTORAGE_URL: 'https://api.jsonstorage.net/items/deed851d-fa9e-427c-94da-fae7dfe10eb7'
         run: |
           node << 'EOF'
           const webpush = require('./node_modules/web-push');
+          const https = require('https');
+
           const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
           const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
           const VAPID_EMAIL   = process.env.VAPID_EMAIL || 'mailto:agrotic@ussein.sn';
-          const SUBS_JSON     = process.env.SUBSCRIPTIONS_JSON || '[]';
+          const STORAGE_URL   = process.env.JSONSTORAGE_URL;
+
+          function httpRequest(url, options = {}, body = null) {
+            return new Promise((resolve, reject) => {
+              const urlObj = new URL(url);
+              const opts = {
+                hostname: urlObj.hostname,
+                path: urlObj.pathname,
+                method: options.method || 'GET',
+                headers: options.headers || {}
+              };
+              const req = https.request(opts, res => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+                  catch(e) { resolve({ status: res.statusCode, body: data }); }
+                });
+              });
+              req.on('error', reject);
+              if (body) req.write(body);
+              req.end();
+            });
+          }
 
           async function main() {
             if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-              console.error('[AgroTIC] VAPID keys manquantes.');
+              console.error('[AgroTIC] VAPID keys manquantes dans les Secrets.');
               process.exit(1);
             }
+
             webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
 
-            let subscriptions = [];
-            try { subscriptions = JSON.parse(SUBS_JSON); }
-            catch(e) { console.log('[AgroTIC] PUSH_SUBSCRIPTIONS vide.'); process.exit(0); }
+            // Lire les subscriptions depuis JsonStorage
+            console.log('[AgroTIC] Lecture des abonnes...');
+            const getRes = await httpRequest(STORAGE_URL);
+
+            if (getRes.status !== 200) {
+              console.error('[AgroTIC] Erreur lecture JsonStorage:', getRes.status);
+              process.exit(1);
+            }
+
+            const subscriptions = Array.isArray(getRes.body) ? getRes.body : [];
+            console.log('[AgroTIC] ' + subscriptions.length + ' abonne(s) trouve(s).');
 
             if (!subscriptions.length) {
               console.log('[AgroTIC] Aucun abonne. Pipeline OK.');
@@ -63,20 +97,33 @@ jobs:
               try {
                 await webpush.sendNotification(sub, payload);
                 sent++; validSubs.push(sub);
-                console.log('[AgroTIC] Envoye:', sub.endpoint.slice(0,50) + '...');
+                console.log('[AgroTIC] Envoye a:', sub.endpoint.slice(0,60) + '...');
               } catch(err) {
                 if (err.statusCode === 404 || err.statusCode === 410) {
-                  console.log('[AgroTIC] Expire supprime.'); expired++;
+                  console.log('[AgroTIC] Abonnement expire supprime.');
+                  expired++;
                 } else {
-                  console.error('[AgroTIC] Erreur:', err.message); failed++; validSubs.push(sub);
+                  console.error('[AgroTIC] Erreur:', err.message);
+                  failed++; validSubs.push(sub);
                 }
               }
             }
+
             console.log('[AgroTIC] ' + sent + ' envoyes | ' + failed + ' erreurs | ' + expired + ' expires');
+
+            // Mettre à jour JsonStorage si des abonnements ont expiré
             if (expired > 0) {
-              console.log('Nouveau PUSH_SUBSCRIPTIONS:');
-              console.log(JSON.stringify(validSubs));
+              const bodyStr = JSON.stringify(validSubs);
+              await httpRequest(STORAGE_URL, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(bodyStr)
+                }
+              }, bodyStr);
+              console.log('[AgroTIC] Storage mis a jour (' + validSubs.length + ' abonnes restants).');
             }
           }
-          main().catch(err => { console.error(err); process.exit(1); });
+
+          main().catch(err => { console.error('[AgroTIC] Erreur fatale:', err); process.exit(1); });
           EOF
