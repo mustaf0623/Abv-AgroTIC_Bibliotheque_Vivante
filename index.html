@@ -5401,11 +5401,12 @@ function urlBase64ToUint8Array(base64String) {
   return new Uint8Array([...raw].map(c => c.charCodeAt(0)));
 }
 
-// JsonStorage — stockage public des subscriptions (accessible mobile + GitHub Action)
-const JSONBIN_URL = 'https://api.jsonstorage.net/items/deed851d-fa9e-427c-94da-fae7dfe10eb7';
-const JSONBIN_KEY = '';
+// GitHub Gist — stockage des subscriptions push
+const GIST_ID    = '64776ab1e54ea8c6c2b7feaee58a7957';
+const GIST_TOKEN = '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';
+const GIST_FILE  = 'subscriptions.json';
 
-// Abonner l'utilisateur au push serveur et sauvegarder dans JsonStorage
+// Abonner l'utilisateur et sauvegarder dans GitHub Gist
 async function subscribeToPush(reg) {
   try {
     let sub = await reg.pushManager.getSubscription();
@@ -5417,10 +5418,16 @@ async function subscribeToPush(reg) {
     }
     const subJson = sub.toJSON();
 
-    // Lire les subscriptions existantes
-    const getRes = await fetch(JSONBIN_URL);
-    const existing = await getRes.json();
-    const list = Array.isArray(existing) ? existing : [];
+    // Lire les subscriptions existantes depuis le Gist
+    const getRes = await fetch('https://api.github.com/gists/' + GIST_ID, {
+      headers: {
+        'Authorization': 'token ' + GIST_TOKEN,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    const gistData = await getRes.json();
+    const content  = gistData.files[GIST_FILE].content;
+    const list     = JSON.parse(content || '[]');
 
     // Eviter les doublons
     if (list.find(s => s.endpoint === subJson.endpoint)) {
@@ -5431,11 +5438,17 @@ async function subscribeToPush(reg) {
 
     list.push(subJson);
 
-    // Sauvegarder la liste mise à jour
-    await fetch(JSONBIN_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(list)
+    // Sauvegarder dans le Gist
+    await fetch('https://api.github.com/gists/' + GIST_ID, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': 'token ' + GIST_TOKEN,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        files: { [GIST_FILE]: { content: JSON.stringify(list) } }
+      })
     });
 
     console.log('[AgroTIC] Subscription enregistrée (' + list.length + ' abonnés)');
