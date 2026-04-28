@@ -22,32 +22,30 @@ jobs:
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_EMAIL: ${{ secrets.VAPID_EMAIL }}
-          JSONSTORAGE_URL: 'https://api.jsonstorage.net/items/deed851d-fa9e-427c-94da-fae7dfe10eb7'
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
           node << 'EOF'
           const webpush = require('./node_modules/web-push');
-          const https = require('https');
+          const https   = require('https');
 
           const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
           const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
           const VAPID_EMAIL   = process.env.VAPID_EMAIL || 'mailto:agrotic@ussein.sn';
-          const STORAGE_URL   = process.env.JSONSTORAGE_URL;
+          const GIST_ID       = process.env.GIST_ID;
+          const GIST_TOKEN    = process.env.GIST_TOKEN;
+          const GIST_FILE     = 'subscriptions.json';
 
-          function httpRequest(url, options = {}, body = null) {
+          function request(url, method, headers, body) {
             return new Promise((resolve, reject) => {
-              const urlObj = new URL(url);
-              const opts = {
-                hostname: urlObj.hostname,
-                path: urlObj.pathname,
-                method: options.method || 'GET',
-                headers: options.headers || {}
-              };
+              const u = new URL(url);
+              const opts = { hostname: u.hostname, path: u.pathname + u.search, method: method || 'GET', headers: headers || {} };
               const req = https.request(opts, res => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
+                let d = '';
+                res.on('data', c => d += c);
                 res.on('end', () => {
-                  try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-                  catch(e) { resolve({ status: res.statusCode, body: data }); }
+                  try { resolve({ status: res.statusCode, body: JSON.parse(d) }); }
+                  catch(e) { resolve({ status: res.statusCode, body: d }); }
                 });
               });
               req.on('error', reject);
@@ -58,22 +56,37 @@ jobs:
 
           async function main() {
             if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-              console.error('[AgroTIC] VAPID keys manquantes dans les Secrets.');
-              process.exit(1);
+              console.error('[AgroTIC] VAPID keys manquantes.'); process.exit(1);
+            }
+            if (!GIST_ID || !GIST_TOKEN) {
+              console.error('[AgroTIC] GIST_ID ou GIST_TOKEN manquants.'); process.exit(1);
             }
 
             webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
 
-            // Lire les subscriptions depuis JsonStorage
-            console.log('[AgroTIC] Lecture des abonnes...');
-            const getRes = await httpRequest(STORAGE_URL);
+            // Lire les subscriptions depuis le Gist
+            console.log('[AgroTIC] Lecture des abonnes depuis Gist...');
+            const gistRes = await request(
+              'https://api.github.com/gists/' + GIST_ID,
+              'GET',
+              { 'Authorization': 'token ' + GIST_TOKEN, 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'AgroTIC-PWA' }
+            );
 
-            if (getRes.status !== 200) {
-              console.error('[AgroTIC] Erreur lecture JsonStorage:', getRes.status);
+            if (gistRes.status !== 200) {
+              console.error('[AgroTIC] Erreur lecture Gist:', gistRes.status, JSON.stringify(gistRes.body));
               process.exit(1);
             }
 
-            const subscriptions = Array.isArray(getRes.body) ? getRes.body : [];
+            const fileContent = gistRes.body.files[GIST_FILE] && gistRes.body.files[GIST_FILE].content;
+            if (!fileContent) {
+              console.log('[AgroTIC] Fichier subscriptions.json vide ou introuvable dans le Gist.');
+              process.exit(0);
+            }
+
+            let subscriptions = [];
+            try { subscriptions = JSON.parse(fileContent); } 
+            catch(e) { console.log('[AgroTIC] JSON invalide dans Gist.'); process.exit(0); }
+
             console.log('[AgroTIC] ' + subscriptions.length + ' abonne(s) trouve(s).');
 
             if (!subscriptions.length) {
@@ -97,31 +110,35 @@ jobs:
               try {
                 await webpush.sendNotification(sub, payload);
                 sent++; validSubs.push(sub);
-                console.log('[AgroTIC] Envoye a:', sub.endpoint.slice(0,60) + '...');
+                console.log('[AgroTIC] Envoye a:', sub.endpoint.slice(0, 60) + '...');
               } catch(err) {
                 if (err.statusCode === 404 || err.statusCode === 410) {
-                  console.log('[AgroTIC] Abonnement expire supprime.');
-                  expired++;
+                  console.log('[AgroTIC] Abonnement expire supprime.'); expired++;
                 } else {
-                  console.error('[AgroTIC] Erreur:', err.message);
-                  failed++; validSubs.push(sub);
+                  console.error('[AgroTIC] Erreur push:', err.message); failed++; validSubs.push(sub);
                 }
               }
             }
 
             console.log('[AgroTIC] ' + sent + ' envoyes | ' + failed + ' erreurs | ' + expired + ' expires');
 
-            // Mettre à jour JsonStorage si des abonnements ont expiré
+            // Mettre à jour le Gist si des abonnements ont expiré
             if (expired > 0) {
-              const bodyStr = JSON.stringify(validSubs);
-              await httpRequest(STORAGE_URL, {
-                method: 'PUT',
-                headers: {
+              const newContent = JSON.stringify(validSubs);
+              const patchBody  = JSON.stringify({ files: { [GIST_FILE]: { content: newContent } } });
+              await request(
+                'https://api.github.com/gists/' + GIST_ID,
+                'PATCH',
+                {
+                  'Authorization': 'token ' + GIST_TOKEN,
+                  'Accept': 'application/vnd.github.v3+json',
                   'Content-Type': 'application/json',
-                  'Content-Length': Buffer.byteLength(bodyStr)
-                }
-              }, bodyStr);
-              console.log('[AgroTIC] Storage mis a jour (' + validSubs.length + ' abonnes restants).');
+                  'User-Agent': 'AgroTIC-PWA',
+                  'Content-Length': Buffer.byteLength(patchBody)
+                },
+                patchBody
+              );
+              console.log('[AgroTIC] Gist mis a jour (' + validSubs.length + ' abonnes restants).');
             }
           }
 
