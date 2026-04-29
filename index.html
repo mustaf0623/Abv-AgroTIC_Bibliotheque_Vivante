@@ -5356,7 +5356,14 @@ if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js")
       .then(function(r){
         console.log("[AgroTIC] SW OK:", r.scope);
-        if (Notification.permission === 'granted') subscribeToNtfy();
+        if (Notification.permission === 'granted') {
+          subscribeToNtfy();
+        } else if (Notification.permission === 'default') {
+          // Demander la permission après 3 secondes si l'onboarding est déjà vu
+          if (localStorage.getItem('agrotic_ob_seen')) {
+            setTimeout(requestNotifPermission, 3000);
+          }
+        }
       })
       .catch(function(e){ console.log("[AgroTIC] SW error:", e); });
   });
@@ -5403,11 +5410,15 @@ async function requestNotifPermission() {
 }
 
 function subscribeToNtfy() {
-  if (localStorage.getItem('agrotic_ntfy_subscribed')) return;
   if (!('serviceWorker' in navigator)) return;
+  // Réinitialiser si la permission a été révoquée
+  if (Notification.permission !== 'granted') {
+    localStorage.removeItem('agrotic_ntfy_subscribed');
+    return;
+  }
+  if (localStorage.getItem('agrotic_ntfy_subscribed')) return;
 
   navigator.serviceWorker.ready.then(reg => {
-    // Le SW écoute Ntfy via EventSource (SSE)
     reg.active && reg.active.postMessage({
       type: 'NTFY_SUBSCRIBE',
       topic: NTFY_TOPIC
