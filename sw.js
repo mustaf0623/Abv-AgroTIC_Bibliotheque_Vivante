@@ -1,57 +1,45 @@
 /* ══════════════════════════════════════════════════
-   AgroTIC — Service Worker v4.0
-   Compatible GitHub Pages + Netlify
+   AgroTIC — Service Worker v5.0
+   Notifications via Ntfy.sh (zéro token, zéro serveur)
    ══════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'agrotic-v4';
+const CACHE_NAME  = 'agrotic-v5';
+const NTFY_TOPIC  = 'agrotic-bibliotheque-vivante-mustaf0623';
+const BASE        = self.location.pathname.replace(/\/sw\.js$/, '');
+const ASSETS      = [BASE + '/', BASE + '/index.html', BASE + '/icon-192.png'];
 
-// Détecter le base path automatiquement (GitHub Pages ou Netlify)
-const BASE = self.location.pathname.replace(/\/sw\.js$/, '');
-
-const ASSETS = [
-  BASE + '/',
-  BASE + '/index.html',
-  BASE + '/icon-192.png',
-];
-
-// ── INSTALLATION : mise en cache avec le bon base path ──
+// ── INSTALLATION ──
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      // Mettre en cache chaque asset individuellement pour éviter l'échec en bloc
-      return Promise.allSettled(
-        ASSETS.map(url => cache.add(url).catch(e => console.warn('[SW] Could not cache:', url, e)))
-      );
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(cache =>
+      Promise.allSettled(ASSETS.map(url => cache.add(url).catch(() => {})))
+    ).then(() => self.skipWaiting())
   );
 });
 
-// ── ACTIVATION : supprimer les anciens caches ──
+// ── ACTIVATION ──
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-      ))
-      .then(() => self.clients.claim())
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => {
+        self.clients.claim();
+        // Démarrer l'écoute Ntfy dès l'activation
+        startNtfyListener();
+      })
   );
 });
 
 // ── FETCH : cache-first → network → fallback offline ──
 self.addEventListener('fetch', event => {
-  // Ne pas intercepter les requêtes non-GET ni les API externes
   if (event.request.method !== 'GET') return;
-  if (event.request.url.includes('/.netlify/functions/')) return;
-  if (event.request.url.includes('googleapis.com')) return;
+  if (event.request.url.includes('ntfy.sh')) return;
 
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
-
-      // Pas en cache → réseau
       return fetch(event.request)
         .then(response => {
-          // Mettre en cache les réponses valides
           if (response && response.status === 200 && response.type !== 'opaque') {
             const clone = response.clone();
             caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
@@ -59,84 +47,99 @@ self.addEventListener('fetch', event => {
           return response;
         })
         .catch(() => {
-          // Hors ligne et pas en cache → retourner index.html pour navigation
           if (event.request.mode === 'navigate') {
-            return caches.match(BASE + '/index.html')
-              .then(r => r || caches.match(BASE + '/'));
+            return caches.match(BASE + '/index.html').then(r => r || caches.match(BASE + '/'));
           }
         });
     })
   );
 });
 
-// ── PUSH : notification venant du serveur ──
-// Déclenché même quand l'app est totalement fermée/killée
-self.addEventListener('push', event => {
-  let data = {
-    title: '🌱 AgroTIC — Nouvelle notion disponible',
-    body: "Une nouvelle notion t'attend. Ouvre l'app pour la découvrir !",
-    icon: BASE + '/icon-192.png',
-    badge: BASE + '/icon-192.png',
-    tag: 'agrotic-push',
-    url: BASE + '/'
-  };
-  if (event.data) {
-    try { data = { ...data, ...JSON.parse(event.data.text()) }; }
-    catch(e) { data.body = event.data.text(); }
-  }
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon,
-      badge: data.badge,
-      tag: data.tag,
-      renotify: true,
-      vibrate: [200, 100, 200],
-      requireInteraction: false,
-      data: { url: data.url }
-    })
-  );
-});
+// ── NTFY LISTENER : écoute le canal SSE Ntfy ──
+// Fonctionne même quand l'app est en arrière-plan
+let ntfyController = null;
 
-// ── NOTIFICATION CLICK : ouvrir l'app ──
+function startNtfyListener() {
+  if (ntfyController) return; // Déjà en écoute
+
+  const url = 'https://ntfy.sh/' + NTFY_TOPIC + '/sse';
+
+  function connect() {
+    // Utiliser fetch avec ReadableStream pour SSE dans le SW
+    fetch(url).then(response => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      function read() {
+        reader.read().then(({ done, value }) => {
+          if (done) {
+            // Reconnexion automatique après 5 secondes
+            setTimeout(connect, 5000);
+            return;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.event === 'message') {
+                  // Afficher la notification
+                  self.registration.showNotification(
+                    data.title || '🌱 AgroTIC',
+                    {
+                      body: data.message || "Une nouvelle notion t'attend !",
+                      icon: BASE + '/icon-192.png',
+                      badge: BASE + '/icon-192.png',
+                      tag: 'agrotic-ntfy',
+                      renotify: true,
+                      vibrate: [200, 100, 200],
+                      data: { url: BASE + '/' }
+                    }
+                  );
+                }
+              } catch(e) {}
+            }
+          }
+          read();
+        }).catch(() => setTimeout(connect, 5000));
+      }
+      read();
+    }).catch(() => setTimeout(connect, 5000));
+  }
+
+  connect();
+}
+
+// ── NOTIFICATION CLICK ──
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || (BASE + '/');
+  const url = (event.notification.data && event.notification.data.url) || BASE + '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
       for (const client of clients) {
         if ('focus' in client) return client.focus();
       }
-      return self.clients.openWindow(targetUrl);
+      return self.clients.openWindow(url);
     })
   );
 });
 
-// ── MESSAGE depuis l'app (notifications locales + badge) ──
+// ── MESSAGE depuis l'app ──
 self.addEventListener('message', event => {
   const data = event.data;
   if (!data) return;
-  if (data.type === 'SHOW_NOTIFICATION') {
-    event.waitUntil(
-      self.registration.showNotification(data.title, {
-        body: data.body,
-        icon: BASE + '/icon-192.png',
-        badge: BASE + '/icon-192.png',
-        tag: 'agrotic-notif',
-        renotify: true,
-        vibrate: [200, 100, 200],
-        data: { url: BASE + '/' }
-      })
-    );
-  }
+
+  if (data.type === 'NTFY_SUBSCRIBE') startNtfyListener();
+
   if (data.type === 'SET_BADGE') {
-    if ('setAppBadge' in self.navigator) {
-      self.navigator.setAppBadge(data.count).catch(() => {});
-    }
+    if ('setAppBadge' in self.navigator) self.navigator.setAppBadge(data.count).catch(() => {});
   }
   if (data.type === 'CLEAR_BADGE') {
-    if ('clearAppBadge' in self.navigator) {
-      self.navigator.clearAppBadge().catch(() => {});
-    }
+    if ('clearAppBadge' in self.navigator) self.navigator.clearAppBadge().catch(() => {});
   }
 });
