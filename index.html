@@ -929,6 +929,11 @@ select.ssel{background:rgba(26,18,8,.9);border:1px solid rgba(200,150,70,.2);col
     <div class="hero-eyebrow">🌱 Savoir Vivant — USSEIN AgroTIC</div>
     <div class="hero-title">L'agronomie moderne<br/><em>à portée de main</em></div>
     <div class="hero-desc">Une bibliothèque scientifique ancrée dans les réalités africaines, enrichie des innovations mondiales de l'agriculture de demain.</div>
+    <div id="notif-banner" style="display:none;margin-top:.75rem">
+      <button onclick="activerNotifications()" style="background:linear-gradient(135deg,#3a7035,#1a6b5a);border:none;border-radius:.7rem;padding:.55rem 1.1rem;color:#c5e8b8;font-size:.75rem;font-weight:700;cursor:pointer;width:100%">
+        🔔 Activer les notifications de rappel
+      </button>
+    </div>
   </div>
   <div class="home-body">
     <div class="streak-row">
@@ -5258,8 +5263,8 @@ function selectAnswer(chosen, correct, _unused, notionId) {
       <div class="ob-afri"><span style="font-size:1rem;flex-shrink:0">🌍</span><div>Chaque notion inclut un encadré <strong style="color:#c4924a">Contexte Sénégal / Afrique de l'Ouest</strong> ancré dans les réalités locales — ISRA, ANACIM, SAED, DEFCCS, filières sénégalaises et ressources naturelles africaines.</div></div>
     </div>
     <div class="ob-footer">
-      <button class="ob-btn" onclick="closeOnboarding()">🌿 Ouvrir AgroTIC</button>
-      <div class="ob-skip" onclick="closeOnboarding()">Passer l'introduction</div>
+      <button class="ob-btn" onclick="closeOnboardingAndAskNotif()">🌿 Ouvrir AgroTIC</button>
+      <div class="ob-skip" onclick="closeOnboardingAndAskNotif()">Passer l'introduction</div>
       <div class="ob-dev">Développé par Mouhamadou Moustapha SY · AgroTIC Digital Learning</div>
     </div>
   </div>
@@ -5278,6 +5283,36 @@ function showOnboarding(){
     }
   } catch(e){}
 }
+// Activer les notifications depuis l'accueil (geste utilisateur)
+function activerNotifications(){
+  if (!('Notification' in window)) {
+    alert('Votre navigateur ne supporte pas les notifications.');
+    return;
+  }
+  Notification.requestPermission().then(function(perm){
+    console.log('[AgroTIC] Permission:', perm);
+    if (perm === 'granted') {
+      subscribeToNtfy();
+      document.getElementById('notif-banner').style.display = 'none';
+      new Notification('🌱 AgroTIC activé !', {
+        body: 'Tu recevras une nouvelle notion toutes les 45 minutes.',
+        icon: 'icon-192.png'
+      });
+    }
+  });
+}
+
+// Afficher le bouton si permission pas encore accordée
+function checkNotifBanner(){
+  const banner = document.getElementById('notif-banner');
+  if (!banner) return;
+  if ('Notification' in window && Notification.permission === 'default') {
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
 function closeOnboarding(){
   var ob = document.getElementById("onboarding");
   if(!ob) return;
@@ -5285,9 +5320,26 @@ function closeOnboarding(){
   ob.style.opacity = "0";
   setTimeout(function(){ ob.style.display="none"; }, 320);
   try { localStorage.setItem("agrotic_ob_seen","1"); } catch(e){}
-  // Demander la permission notifications après l'onboarding (meilleur moment)
-  if (typeof requestNotifPermission === 'function') {
-    setTimeout(requestNotifPermission, 800);
+}
+
+// Ferme l'onboarding ET demande la permission notifications dans le même geste utilisateur
+function closeOnboardingAndAskNotif(){
+  closeOnboarding();
+  // Demande immédiate — on est dans un geste utilisateur (clic) donc le navigateur autorise
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission().then(function(perm){
+      console.log('[AgroTIC] Permission notifications:', perm);
+      if (perm === 'granted') {
+        subscribeToNtfy();
+        // Notif de bienvenue immédiate pour confirmer que ça marche
+        new Notification('🌱 AgroTIC activé !', {
+          body: 'Tu recevras une nouvelle notion toutes les 45 minutes.',
+          icon: 'icon-192.png'
+        });
+      }
+    });
+  } else if ('Notification' in window && Notification.permission === 'granted') {
+    subscribeToNtfy();
   }
 }
 document.addEventListener("DOMContentLoaded", function(){
@@ -5358,12 +5410,9 @@ if("serviceWorker" in navigator){
         console.log("[AgroTIC] SW OK:", r.scope);
         if (Notification.permission === 'granted') {
           subscribeToNtfy();
-        } else if (Notification.permission === 'default') {
-          // Demander la permission après 3 secondes si l'onboarding est déjà vu
-          if (localStorage.getItem('agrotic_ob_seen')) {
-            setTimeout(requestNotifPermission, 3000);
-          }
         }
+        // Afficher le bouton d'activation si besoin
+        checkNotifBanner();
       })
       .catch(function(e){ console.log("[AgroTIC] SW error:", e); });
   });
