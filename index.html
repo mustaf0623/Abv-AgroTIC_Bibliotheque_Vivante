@@ -5411,6 +5411,9 @@ document.addEventListener("DOMContentLoaded", function(){
 // ══ SYSTÈME DE NOTIFICATIONS AU RETOUR ══
 function initNotifSystem(){
   try {
+    // D'abord, vérifier et demander les permissions si nécessaire
+    ensureNotifPermissions();
+    
     const lastVisit = parseInt(localStorage.getItem('agrotic_last_visit') || '0');
     const now = Date.now();
     const intMs = intMin * 60 * 1000;
@@ -5427,6 +5430,98 @@ function initNotifSystem(){
   } catch(e){ console.error('[AgroTIC] initNotifSystem:', e); }
 }
 
+// ── Vérifier et demander les permissions au démarrage ──
+function ensureNotifPermissions(){
+  if (!('Notification' in window)) {
+    console.log('[AgroTIC] Notifications non supportées');
+    return;
+  }
+
+  const perm = Notification.permission;
+  
+  if (perm === 'granted') {
+    // Déjà autorisé - synchroniser avec le SW
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SYNC_TIMER_DATA',
+        interval: intMin,
+        nextNotifTime: getNextNotifTime()
+      });
+    }
+    console.log('[AgroTIC] Notifications autorisées');
+    return;
+  }
+  
+  if (perm === 'default') {
+    // Pas encore demandé - on va demander après une courte attente
+    console.log('[AgroTIC] Demande de permission en attente...');
+    setTimeout(() => {
+      Notification.requestPermission().then(result => {
+        console.log('[AgroTIC] Permission result:', result);
+        if (result === 'granted') {
+          // Synchroniser avec le SW
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'SYNC_TIMER_DATA',
+              interval: intMin,
+              nextNotifTime: getNextNotifTime()
+            });
+          }
+          console.log('[AgroTIC] Notifications activées !');
+        } else {
+          console.warn('[AgroTIC] Permission refusée');
+        }
+      });
+    }, 2000);
+    return;
+  }
+  
+  if (perm === 'denied') {
+    console.warn('[AgroTIC] Notifications refusées par l\'utilisateur');
+    // Afficher une bannière pour avertir l'utilisateur
+    showNotifDeniedBanner();
+    return;
+  }
+}
+
+// ── Bannière si les notifications sont refusées ──
+function showNotifDeniedBanner(){
+  try {
+    let banner = document.getElementById('notif-denied-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'notif-denied-banner';
+      banner.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+        background: linear-gradient(135deg, rgba(150, 80, 60, 0.95), rgba(180, 100, 70, 0.95));
+        color: #f5edd8; padding: 0.8rem 1.1rem; text-align: center;
+        font-size: 0.75rem; font-weight: 600;
+        border-bottom: 1px solid rgba(200, 150, 70, 0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      `;
+      banner.innerHTML = `
+        ⚠️ Les notifications sont <strong>refusées</strong>. Vérifiez vos paramètres de navigateur.
+        <button onclick="document.getElementById('notif-denied-banner').style.display='none'" 
+          style="margin-left: 1rem; background: transparent; border: 1px solid rgba(245, 237, 216, 0.5); 
+                 color: inherit; padding: 0.3rem 0.6rem; border-radius: 0.3rem; cursor: pointer; font-size: 0.7rem;">
+          Fermer
+        </button>
+      `;
+      document.body.insertBefore(banner, document.body.firstChild);
+    }
+    banner.style.display = 'block';
+    // Disparaître automatiquement après 8 secondes
+    setTimeout(() => {
+      if (banner && banner.style.display !== 'none') {
+        banner.style.opacity = '0';
+        banner.style.transition = 'opacity 0.5s';
+      }
+    }, 8000);
+  } catch(e) {
+    console.error('[AgroTIC] Banner error:', e);
+  }
+}
+
 function showWelcomeNotif(cycles){
   try {
     const unread = DATA.filter(n => isNotionUnlocked(n) && !read.includes(n.id));
@@ -5435,8 +5530,9 @@ function showWelcomeNotif(cycles){
     const picks = unread.slice(0, Math.min(cycles, 3));
     
     // Au lieu d'ouvrir le popup manuellement, on demande au nouveau système intelligent de s'en occuper !
+    // fromBackground=true : l'app vient de reprendre — les notions ont été manquées en arrière-plan
     picks.forEach(n => {
-      sendSmartNotification(n); 
+      sendSmartNotification(n, true); 
     });
 
   } catch(e){ console.error('[AgroTIC] showWelcomeNotif:', e); }
@@ -5471,7 +5567,6 @@ if("serviceWorker" in navigator){
         checkNotifBanner();
       })
       .catch(function(e){ console.log("[AgroTIC] SW error:", e); });
-  });
   });
 }
 
@@ -5533,9 +5628,10 @@ function subscribeToNtfy() {
   });
 }
 
-async function sendSmartNotification(notion) {
-  // ── CAS 1 : App visible à l'écran → popup HTML interne ──
-  if (!document.hidden) {
+// fromBackground=true → notion manquée pendant que l'app était fermée/arrière-plan.
+async function sendSmartNotification(notion, fromBackground) {
+  // ── CAS 1 : App visible + notification en temps réel (timer interne) → popup HTML ──
+  if (!document.hidden && !fromBackground) {
     const popup  = document.getElementById('popup');
     const pTitle = document.getElementById('pTitle');
     const pPrev  = document.getElementById('pPrev');
@@ -5557,8 +5653,8 @@ async function sendSmartNotification(notion) {
     }
   }
 
-  // ── CAS 2 : App en arrière-plan → notification OS via Service Worker ──
-  if ('serviceWorker' in navigator && 'Notification' in window) {
+  // ── CAS 2 : App était en arrière-plan au moment du déclenchement → notification OS via SW ──
+  if (!fromBackground && document.hidden && 'serviceWorker' in navigator && 'Notification' in window) {
     // Demander la permission si pas encore fait
     if (Notification.permission === 'default') {
       await requestNotifPermission();
@@ -5584,7 +5680,7 @@ async function sendSmartNotification(notion) {
     }
   }
 
-  // ── CAS 3 : Hors-ligne ou permission refusée → badge manqué ──
+  // ── CAS 3 : Retour dans l'app après absence (fromBackground) ou permission refusée → badge manqué ──
   let count = parseInt(localStorage.getItem('missed_notifs_count') || '0');
   count++;
   localStorage.setItem('missed_notifs_count', String(count));
