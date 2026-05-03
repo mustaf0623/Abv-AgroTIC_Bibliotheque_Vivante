@@ -3457,9 +3457,18 @@ function resetNextNotifTime(){
 
 function startTimer(){
   clearInterval(timerInt);
-  getNextNotifTime(); // initialise si absent
+  const nextTime = getNextNotifTime(); // initialise si absent
   timerInt = setInterval(checkTimer, 1000);
   checkTimer(); // vérif immédiate
+  
+  // ── Synchroniser avec le Service Worker ──
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SYNC_TIMER_DATA',
+      interval: intMin,
+      nextNotifTime: nextTime
+    });
+  }
 }
 
 function checkTimer(){
@@ -3494,10 +3503,19 @@ function updateTimerDisplay(remainingMs){
 function updateInterval(){
   intMin = parseInt(document.getElementById('intSel').value);
   // Reprogrammer à partir de maintenant
-  resetNextNotifTime();
+  const nextTime = resetNextNotifTime();
   clearInterval(timerInt);
   timerInt = setInterval(checkTimer, 1000);
   checkTimer();
+  
+  // ── Synchroniser avec le Service Worker ──
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SYNC_TIMER_DATA',
+      interval: intMin,
+      nextNotifTime: nextTime
+    });
+  }
 }
 
 // ── Vérification au retour sur l'onglet / réveil de l'écran ──
@@ -3514,6 +3532,15 @@ document.addEventListener('visibilitychange', function(){
       resetNextNotifTime();
       popIdx = (popIdx + total) % DATA.length;
       triggerPopup();
+    }
+    
+    // Re-synchroniser le timer avec le SW au retour
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SYNC_TIMER_DATA',
+        interval: intMin,
+        nextNotifTime: getNextNotifTime()
+      });
     }
   }
 });
@@ -5293,6 +5320,16 @@ function activerNotifications(){
     console.log('[AgroTIC] Permission:', perm);
     if (perm === 'granted') {
       subscribeToNtfy();
+      
+      // ── Synchroniser le timer avec le SW ──
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SYNC_TIMER_DATA',
+          interval: intMin,
+          nextNotifTime: getNextNotifTime()
+        });
+      }
+      
       document.getElementById('notif-banner').style.display = 'none';
       new Notification('🌱 AgroTIC activé !', {
         body: 'Tu recevras une nouvelle notion toutes les 45 minutes.',
@@ -5331,6 +5368,16 @@ function closeOnboardingAndAskNotif(){
       console.log('[AgroTIC] Permission notifications:', perm);
       if (perm === 'granted') {
         subscribeToNtfy();
+        
+        // ── Synchroniser le timer avec le SW ──
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'SYNC_TIMER_DATA',
+            interval: intMin,
+            nextNotifTime: getNextNotifTime()
+          });
+        }
+        
         // Notif de bienvenue immédiate pour confirmer que ça marche
         new Notification('🌱 AgroTIC activé !', {
           body: 'Tu recevras une nouvelle notion toutes les 45 minutes.',
@@ -5340,6 +5387,15 @@ function closeOnboardingAndAskNotif(){
     });
   } else if ('Notification' in window && Notification.permission === 'granted') {
     subscribeToNtfy();
+    
+    // ── Synchroniser le timer avec le SW ──
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SYNC_TIMER_DATA',
+        interval: intMin,
+        nextNotifTime: getNextNotifTime()
+      });
+    }
   }
 }
 document.addEventListener("DOMContentLoaded", function(){

@@ -3,7 +3,7 @@
    Notifications via Ntfy.sh (zéro token, zéro serveur)
    ══════════════════════════════════════════════════ */
 
-const CACHE_NAME  = 'agrotic-v5';
+const CACHE_NAME  = '/Abv-AgroTIC_Bibliotheque_Vivante/index.html';
 const NTFY_TOPIC  = 'agrotic-bibliotheque-vivante-mustaf0623';
 const BASE        = self.location.pathname.replace(/\/sw\.js$/, '');
 const ASSETS      = [BASE + '/', BASE + '/index.html', BASE + '/icon-192.png'];
@@ -26,6 +26,8 @@ self.addEventListener('activate', event => {
         self.clients.claim();
         // Démarrer l'écoute Ntfy dès l'activation
         startNtfyListener();
+        // Démarrer le background timer
+        startBackgroundTimer();
       })
   );
 });
@@ -129,12 +131,69 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
+// ── TIMER DE FOND (même si l'app est fermée) ──
+let bgTimerInterval = null;
+let nextNotifTime = null;
+let intervalMin = 45; // Par défaut 45 minutes
+
+function startBackgroundTimer() {
+  if (bgTimerInterval) return; // Déjà actif
+
+  console.log('[AgroTIC] Background timer started');
+  
+  bgTimerInterval = setInterval(() => {
+    checkBackgroundTimer();
+  }, 60000); // Vérifier chaque minute
+
+  // Vérifier immédiatement au démarrage
+  checkBackgroundTimer();
+}
+
+function checkBackgroundTimer() {
+  try {
+    if (!nextNotifTime) return;
+
+    const now = Date.now();
+
+    if (now >= nextNotifTime) {
+      console.log('[AgroTIC] Timer écoulé en arrière-plan - affichage notification');
+      // Afficher une notification générique
+      self.registration.showNotification('🌱 AgroTIC — Nouvelle notion', {
+        body: 'Une nouvelle notion t\'attend. Ouvre l\'app pour la découvrir et gagner des XP !',
+        icon: BASE + '/icon-192.png',
+        badge: BASE + '/icon-192.png',
+        tag: 'agrotic-bg-timer',
+        renotify: true,
+        vibrate: [200, 100, 200],
+        data: { url: BASE + '/' }
+      });
+
+      // Reprogrammer le prochain
+      nextNotifTime = now + intervalMin * 60 * 1000;
+    }
+  } catch(e) {
+    console.error('[AgroTIC] Background timer error:', e);
+  }
+}
+
 // ── MESSAGE depuis l'app ──
 self.addEventListener('message', event => {
   const data = event.data;
   if (!data) return;
 
   if (data.type === 'NTFY_SUBSCRIBE') startNtfyListener();
+  
+  if (data.type === 'SYNC_TIMER_DATA') {
+    // L'app envoie l'intervalle et la prochaine heure de notification
+    if (data.interval) {
+      intervalMin = data.interval;
+    }
+    if (data.nextNotifTime) {
+      nextNotifTime = data.nextNotifTime;
+      console.log('[AgroTIC] Timer synchronisé avec l\'app: ' + new Date(nextNotifTime).toLocaleString());
+    }
+    startBackgroundTimer();
+  }
 
   if (data.type === 'SET_BADGE') {
     if ('setAppBadge' in self.navigator) self.navigator.setAppBadge(data.count).catch(() => {});

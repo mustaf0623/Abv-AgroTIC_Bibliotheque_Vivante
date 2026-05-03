@@ -1,48 +1,78 @@
-name: AgroTIC — Sauvegarder Subscription Push
+name: AgroTIC — Sauvegarder Abonné
 
 on:
-  # Déclenché par l'app via repository_dispatch
   repository_dispatch:
-    types: [save-push-subscription]
+    types: [new-push-subscription]
 
 jobs:
-  save-subscription:
+  save:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
-      - name: Save subscription to GitHub Secret
+      - name: Sauvegarder subscription dans Gist
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
-          REPO: ${{ github.repository }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           NEW_SUB: ${{ toJson(github.event.client_payload.subscription) }}
-          CURRENT_SUBS: ${{ secrets.PUSH_SUBSCRIPTIONS }}
         run: |
-          node -e "
+          node << 'EOF'
           const https = require('https');
+          const GIST_ID   = process.env.GIST_ID;
+          const GIST_TOKEN = process.env.GIST_TOKEN;
+          const GIST_FILE = 'subscriptions.json';
+          const newSub    = JSON.parse(process.env.NEW_SUB);
 
-          const currentSubs = JSON.parse(process.env.CURRENT_SUBS || '[]');
-          const newSub = JSON.parse(process.env.NEW_SUB);
-
-          // Éviter les doublons (même endpoint)
-          const exists = currentSubs.find(s => s.endpoint === newSub.endpoint);
-          if (exists) {
-            console.log('Subscription already exists');
-            process.exit(0);
+          function request(url, method, headers, body) {
+            return new Promise((resolve, reject) => {
+              const u = new URL(url);
+              const opts = { hostname: u.hostname, path: u.pathname, method: method || 'GET', headers: headers || {} };
+              const req = https.request(opts, res => {
+                let d = '';
+                res.on('data', c => d += c);
+                res.on('end', () => {
+                  try { resolve({ status: res.statusCode, body: JSON.parse(d) }); }
+                  catch(e) { resolve({ status: res.statusCode, body: d }); }
+                });
+              });
+              req.on('error', reject);
+              if (body) req.write(body);
+              req.end();
+            });
           }
 
-          currentSubs.push(newSub);
-          const updatedJson = JSON.stringify(currentSubs);
+          async function main() {
+            const authHeaders = {
+              'Authorization': 'token ' + GIST_TOKEN,
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'AgroTIC-PWA'
+            };
 
-          console.log('Total subscriptions:', currentSubs.length);
-          console.log('Updated JSON:', updatedJson.slice(0, 100) + '...');
-          // Note: Pour mettre à jour un Secret GitHub via API, utiliser l'API GitHub
-          // La valeur est affichée ici pour mise à jour manuelle si nécessaire
-          console.log('PUSH_SUBSCRIPTIONS to update:', updatedJson);
-          "
+            const gistRes = await request('https://api.github.com/gists/' + GIST_ID, 'GET', authHeaders);
+            if (gistRes.status !== 200) {
+              console.error('Erreur lecture Gist:', gistRes.status); process.exit(1);
+            }
+
+            const content = gistRes.body.files[GIST_FILE] && gistRes.body.files[GIST_FILE].content;
+            const list = JSON.parse(content || '[]');
+
+            if (list.find(s => s.endpoint === newSub.endpoint)) {
+              console.log('[AgroTIC] Abonne deja present.'); process.exit(0);
+            }
+
+            list.push(newSub);
+            const patchBody = JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(list) } } });
+            await request('https://api.github.com/gists/' + GIST_ID, 'PATCH', {
+              ...authHeaders,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(patchBody)
+            }, patchBody);
+
+            console.log('[AgroTIC] Abonne sauvegarde! Total:', list.length);
+          }
+
+          main().catch(err => { console.error(err); process.exit(1); });
+          EOF
