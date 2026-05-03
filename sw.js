@@ -21,7 +21,9 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE_NAME && k !== SW_KV).map(k => caches.delete(k))
+      ))
       .then(() => {
         self.clients.claim();
         // Démarrer l'écoute Ntfy dès l'activation
@@ -136,17 +138,36 @@ let bgTimerInterval = null;
 let nextNotifTime = null;
 let intervalMin = 45; // Par défaut 45 minutes
 
+// Persistance légère via Cache API — survit aux cycles de veille du SW
+const SW_KV = 'agrotic-sw-kv';
+async function swSet(key, value) {
+  try { const c = await caches.open(SW_KV); await c.put('/__kv__/'+key, new Response(String(value))); } catch(e) {}
+}
+async function swGet(key) {
+  try { const c = await caches.open(SW_KV); const r = await c.match('/__kv__/'+key); if(r) return await r.text(); } catch(e) {}
+  return null;
+}
+async function loadTimerState() {
+  const i = await swGet('intervalMin');
+  const n = await swGet('nextNotifTime');
+  if (i) intervalMin   = parseInt(i);
+  if (n) nextNotifTime = parseInt(n);
+}
+
 function startBackgroundTimer() {
   if (bgTimerInterval) return; // Déjà actif
 
   console.log('[AgroTIC] Background timer started');
-  
-  bgTimerInterval = setInterval(() => {
-    checkBackgroundTimer();
-  }, 60000); // Vérifier chaque minute
 
-  // Vérifier immédiatement au démarrage
-  checkBackgroundTimer();
+  // Recharger intervalMin et nextNotifTime depuis le cache (survie aux cycles de veille)
+  loadTimerState().then(() => {
+    bgTimerInterval = setInterval(() => {
+      checkBackgroundTimer();
+    }, 60000); // Vérifier chaque minute
+
+    // Vérifier immédiatement au démarrage
+    checkBackgroundTimer();
+  });
 }
 
 function checkBackgroundTimer() {
@@ -168,8 +189,9 @@ function checkBackgroundTimer() {
         data: { url: BASE + '/' }
       });
 
-      // Reprogrammer le prochain
+      // Reprogrammer le prochain et persister
       nextNotifTime = now + intervalMin * 60 * 1000;
+      swSet('nextNotifTime', nextNotifTime);
     }
   } catch(e) {
     console.error('[AgroTIC] Background timer error:', e);
@@ -187,10 +209,12 @@ self.addEventListener('message', event => {
     // L'app envoie l'intervalle et la prochaine heure de notification
     if (data.interval) {
       intervalMin = data.interval;
+      swSet('intervalMin', intervalMin); // persister le choix utilisateur
     }
     if (data.nextNotifTime) {
       nextNotifTime = data.nextNotifTime;
-      console.log('[AgroTIC] Timer synchronisé avec l\'app: ' + new Date(nextNotifTime).toLocaleString());
+      swSet('nextNotifTime', nextNotifTime); // persister le prochain déclenchement
+      console.log('[AgroTIC] Timer synchronisé: ' + new Date(nextNotifTime).toLocaleString() + ' (intervalle: ' + intervalMin + ' min)');
     }
     startBackgroundTimer();
   }

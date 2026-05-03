@@ -1049,7 +1049,7 @@ select.ssel{background:rgba(26,18,8,.9);border:1px solid rgba(200,150,70,.2);col
         <select class="ssel" id="intSel" onchange="updateInterval()">
           <option value="15">15 min</option>
           <option value="30">30 min</option>
-          <option value="45" selected>45 min</option>
+          <option value="45">45 min</option>
           <option value="60">60 min</option>
           <option value="90">90 min</option>
         </select>
@@ -3206,7 +3206,8 @@ body:`<p>La rhizosphère — zone de sol directement influencée par les racines
 // ══════════════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════════════
-let timerSec = 45*60, intMin = 45, timerInt = null;
+let intMin = parseInt(localStorage.getItem('agrotic_interval') || '45');
+let timerSec = intMin*60, timerInt = null;
 let popIdx = 0, featIdx = 0;
 let activeFilter = 'all';
 let saved = JSON.parse(localStorage.getItem('sv')||'[]');
@@ -3410,6 +3411,11 @@ window.addEventListener('DOMContentLoaded', () => {
   try{ renderItin(); }     catch(e){ console.error('renderItin',e); }
   try{ renderProgress(); refreshProgressUI(); } catch(e){ console.error('renderProgress',e); }
   try{ startTimer(); }     catch(e){ console.error('startTimer',e); }
+  // Restaurer la valeur du select intervalle selon la préférence sauvegardée
+  try{
+    const sel = document.getElementById('intSel');
+    if(sel) sel.value = String(intMin);
+  }catch(e){}
 
   try{
     document.getElementById('stS').textContent = saved.length;
@@ -3502,6 +3508,7 @@ function updateTimerDisplay(remainingMs){
 
 function updateInterval(){
   intMin = parseInt(document.getElementById('intSel').value);
+  localStorage.setItem('agrotic_interval', String(intMin)); // ← persister le choix
   // Reprogrammer à partir de maintenant
   const nextTime = resetNextNotifTime();
   clearInterval(timerInt);
@@ -5453,26 +5460,11 @@ function ensureNotifPermissions(){
   }
   
   if (perm === 'default') {
-    // Pas encore demandé - on va demander après une courte attente
-    console.log('[AgroTIC] Demande de permission en attente...');
-    setTimeout(() => {
-      Notification.requestPermission().then(result => {
-        console.log('[AgroTIC] Permission result:', result);
-        if (result === 'granted') {
-          // Synchroniser avec le SW
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-              type: 'SYNC_TIMER_DATA',
-              interval: intMin,
-              nextNotifTime: getNextNotifTime()
-            });
-          }
-          console.log('[AgroTIC] Notifications activées !');
-        } else {
-          console.warn('[AgroTIC] Permission refusée');
-        }
-      });
-    }, 2000);
+    // Permission pas encore demandée — on affiche la bannière d'invitation.
+    // La vraie demande se fait uniquement via un geste utilisateur
+    // (bouton "Activer" ou fermeture de l'onboarding) pour éviter le blocage mobile.
+    console.log('[AgroTIC] Permission en attente — bannière affichée');
+    checkNotifBanner();
     return;
   }
   
