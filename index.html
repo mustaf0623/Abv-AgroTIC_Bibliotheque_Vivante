@@ -3489,7 +3489,20 @@ function checkTimer(){
   if(remaining <= 0){
     resetNextNotifTime();
     popIdx = (popIdx + 1) % DATA.length;
-    triggerPopup();
+
+    if (document.hidden) {
+      // App en arrière-plan : demander au SW d'envoyer la notif OS immédiatement
+      // (le setInterval de la page est throttlé, mais si on arrive ici on en profite)
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SHOW_NOTIF_NOW',
+          title: '🌱 AgroTIC — Nouvelle notion',
+          body: "Une nouvelle notion t'attend. Ouvre l'app pour la découvrir !"
+        });
+      }
+    } else {
+      triggerPopup();
+    }
   }
 }
 
@@ -5559,6 +5572,15 @@ if("serviceWorker" in navigator){
         checkNotifBanner();
       })
       .catch(function(e){ console.log("[AgroTIC] SW error:", e); });
+  });
+
+  // ── Écouter les messages du SW → déclencher le popup si l'app est visible ──
+  navigator.serviceWorker.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'TIMER_FIRED') {
+      // Le SW nous signale que le timer est écoulé et que l'app est visible
+      popIdx = (popIdx + 1) % DATA.length;
+      triggerPopup();
+    }
   });
 }
 

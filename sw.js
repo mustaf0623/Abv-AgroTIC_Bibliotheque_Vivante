@@ -177,21 +177,32 @@ function checkBackgroundTimer() {
     const now = Date.now();
 
     if (now >= nextNotifTime) {
-      console.log('[AgroTIC] Timer écoulé en arrière-plan - affichage notification');
-      // Afficher une notification générique
-      self.registration.showNotification('🌱 AgroTIC — Nouvelle notion', {
-        body: 'Une nouvelle notion t\'attend. Ouvre l\'app pour la découvrir et gagner des XP !',
-        icon: BASE + '/icon-192.png',
-        badge: BASE + '/icon-192.png',
-        tag: 'agrotic-bg-timer',
-        renotify: true,
-        vibrate: [200, 100, 200],
-        data: { url: BASE + '/' }
-      });
-
-      // Reprogrammer le prochain et persister
+      // Reprogrammer immédiatement avant tout
       nextNotifTime = now + intervalMin * 60 * 1000;
       swSet('nextNotifTime', nextNotifTime);
+
+      // Vérifier si un client (onglet) est déjà visible
+      // Si oui : lui demander de déclencher le popup — pas de doublon OS
+      // Si non : envoyer la notification OS
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+        const visibleClient = clients.find(c => c.visibilityState === 'visible');
+
+        if (visibleClient) {
+          // App visible → on demande à la page de déclencher le popup
+          visibleClient.postMessage({ type: 'TIMER_FIRED' });
+        } else {
+          // App en arrière-plan ou fermée → notification OS
+          self.registration.showNotification('🌱 AgroTIC — Nouvelle notion', {
+            body: "Une nouvelle notion t'attend. Ouvre l'app pour la découvrir !",
+            icon: BASE + '/icon-192.png',
+            badge: BASE + '/icon-192.png',
+            tag: 'agrotic-bg-timer',
+            renotify: true,
+            vibrate: [200, 100, 200],
+            data: { url: BASE + '/' }
+          });
+        }
+      });
     }
   } catch(e) {
     console.error('[AgroTIC] Background timer error:', e);
@@ -204,6 +215,23 @@ self.addEventListener('message', event => {
   if (!data) return;
 
   if (data.type === 'NTFY_SUBSCRIBE') startNtfyListener();
+
+  if (data.type === 'SHOW_NOTIF_NOW') {
+    // La page a détecté que le timer est écoulé pendant qu'elle était en arrière-plan
+    // Elle nous demande d'envoyer la notification OS immédiatement
+    self.registration.showNotification(data.title || '🌱 AgroTIC — Nouvelle notion', {
+      body: data.body || "Une nouvelle notion t'attend. Ouvre l'app pour la découvrir !",
+      icon: BASE + '/icon-192.png',
+      badge: BASE + '/icon-192.png',
+      tag: 'agrotic-bg-timer',
+      renotify: true,
+      vibrate: [200, 100, 200],
+      data: { url: BASE + '/' }
+    });
+    // Reprogrammer le prochain déclenchement
+    nextNotifTime = Date.now() + intervalMin * 60 * 1000;
+    swSet('nextNotifTime', nextNotifTime);
+  }
   
   if (data.type === 'SYNC_TIMER_DATA') {
     // L'app envoie l'intervalle et la prochaine heure de notification
