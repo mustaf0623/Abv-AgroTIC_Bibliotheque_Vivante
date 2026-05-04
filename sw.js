@@ -92,19 +92,26 @@ function startNtfyListener() {
               try {
                 const data = JSON.parse(line.slice(6));
                 if (data.event === 'message') {
-                  // Afficher la notification
-                  self.registration.showNotification(
-                    data.title || '🌱 AgroTIC',
-                    {
-                      body: data.message || "Une nouvelle notion t'attend !",
-                      icon: BASE + '/icon-192.png',
-                      badge: BASE + '/icon-192.png',
-                      tag: 'agrotic-ntfy',
-                      renotify: true,
-                      vibrate: [200, 100, 200],
-                      data: { url: BASE + '/' }
+                  // Si un client est visible → popup HTML, sinon → notification OS
+                  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+                    const visibleClient = clients.find(c => c.visibilityState === 'visible');
+                    if (visibleClient) {
+                      visibleClient.postMessage({ type: 'TIMER_FIRED' });
+                    } else {
+                      self.registration.showNotification(
+                        data.title || '🌱 AgroTIC',
+                        {
+                          body: data.message || "Une nouvelle notion t'attend !",
+                          icon: BASE + '/icon-192.png',
+                          badge: BASE + '/icon-192.png',
+                          tag: 'agrotic-ntfy',
+                          renotify: true,
+                          vibrate: [200, 100, 200],
+                          data: { url: BASE + '/' }
+                        }
+                      );
                     }
-                  );
+                  });
                 }
               } catch(e) {}
             }
@@ -155,20 +162,10 @@ async function loadTimerState() {
 
 function startBackgroundTimer() {
   console.log('[AgroTIC] Background timer init');
-
-  // Recharger l'état depuis le cache et vérifier immédiatement
-  loadTimerState().then(() => {
-    checkBackgroundTimer();
-  });
-
-  // Enregistrer le periodic background sync (réveille le SW périodiquement par l'OS)
-  // Ceci est l'unique mécanisme fiable sur Android Chrome pour exécuter du code en arrière-plan
-  self.registration.periodicSync && self.registration.periodicSync.register('agrotic-timer', {
-    minInterval: 15 * 60 * 1000 // minimum 15 min (limite navigateur)
-  }).catch(() => {
-    // periodicSync non disponible ou non autorisé — on se rabat sur ntfy.sh
-    console.log('[AgroTIC] periodicSync non disponible');
-  });
+  // Vérifier immédiatement au démarrage (au cas où timer déjà écoulé)
+  loadTimerState().then(() => checkBackgroundTimer());
+  // Note : periodicSync est enregistré côté PAGE (index.html) avec le bon intervalle utilisateur
+  // Le SW se contente d'écouter l'événement periodicsync ci-dessous
 }
 
 function checkBackgroundTimer() {
