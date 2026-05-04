@@ -134,7 +134,6 @@ self.addEventListener('notificationclick', event => {
 });
 
 // ── TIMER DE FOND (même si l'app est fermée) ──
-let bgTimerInterval = null;
 let nextNotifTime = null;
 let intervalMin = 45; // Par défaut 45 minutes
 
@@ -155,18 +154,20 @@ async function loadTimerState() {
 }
 
 function startBackgroundTimer() {
-  if (bgTimerInterval) return; // Déjà actif
+  console.log('[AgroTIC] Background timer init');
 
-  console.log('[AgroTIC] Background timer started');
-
-  // Recharger intervalMin et nextNotifTime depuis le cache (survie aux cycles de veille)
+  // Recharger l'état depuis le cache et vérifier immédiatement
   loadTimerState().then(() => {
-    bgTimerInterval = setInterval(() => {
-      checkBackgroundTimer();
-    }, 60000); // Vérifier chaque minute
-
-    // Vérifier immédiatement au démarrage
     checkBackgroundTimer();
+  });
+
+  // Enregistrer le periodic background sync (réveille le SW périodiquement par l'OS)
+  // Ceci est l'unique mécanisme fiable sur Android Chrome pour exécuter du code en arrière-plan
+  self.registration.periodicSync && self.registration.periodicSync.register('agrotic-timer', {
+    minInterval: 15 * 60 * 1000 // minimum 15 min (limite navigateur)
+  }).catch(() => {
+    // periodicSync non disponible ou non autorisé — on se rabat sur ntfy.sh
+    console.log('[AgroTIC] periodicSync non disponible');
   });
 }
 
@@ -208,6 +209,17 @@ function checkBackgroundTimer() {
     console.error('[AgroTIC] Background timer error:', e);
   }
 }
+
+// ── PERIODIC BACKGROUND SYNC — réveille le SW périodiquement par l'OS ──
+// Fonctionne sur Android Chrome quand l'app est installée (PWA) et que l'utilisateur
+// a accordé les permissions de notifications
+self.addEventListener('periodicsync', event => {
+  if (event.tag === 'agrotic-timer') {
+    event.waitUntil(
+      loadTimerState().then(() => checkBackgroundTimer())
+    );
+  }
+});
 
 // ── MESSAGE depuis l'app ──
 self.addEventListener('message', event => {

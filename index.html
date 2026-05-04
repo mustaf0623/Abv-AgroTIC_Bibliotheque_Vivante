@@ -3536,6 +3536,16 @@ function updateInterval(){
       nextNotifTime: nextTime
     });
   }
+  // Mettre à jour periodicSync avec le nouvel intervalle
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(r => {
+      if ('periodicSync' in r) {
+        r.periodicSync.register('agrotic-timer', {
+          minInterval: intMin * 60 * 1000
+        }).catch(() => {});
+      }
+    });
+  }
 }
 
 // ── Vérification au retour sur l'onglet / réveil de l'écran ──
@@ -5567,6 +5577,18 @@ if("serviceWorker" in navigator){
         console.log("[AgroTIC] SW OK:", r.scope);
         if (Notification.permission === 'granted') {
           subscribeToNtfy();
+          // Enregistrer le periodic background sync si disponible (Android Chrome PWA)
+          if ('periodicSync' in r) {
+            navigator.permissions.query({ name: 'periodic-background-sync' }).then(status => {
+              if (status.state === 'granted') {
+                r.periodicSync.register('agrotic-timer', {
+                  minInterval: intMin * 60 * 1000
+                }).then(() => {
+                  console.log('[AgroTIC] periodicSync enregistré (' + intMin + ' min)');
+                }).catch(() => {});
+              }
+            }).catch(() => {});
+          }
         }
         // Afficher le bouton d'activation si besoin
         checkNotifBanner();
