@@ -1,20 +1,30 @@
-name: AgroTIC — Notifications Push
+# ══════════════════════════════════════════════════════════════════
+#  AgroTIC — Notifications planifiées via ntfy.sh
+#  Fonctionne même app fermée sur iOS et Android
+#  Gratuit, zéro serveur, zéro token
+# ══════════════════════════════════════════════════════════════════
+
+name: AgroTIC Notifications
 
 on:
   schedule:
-    - cron: '*/45 * * * *'
+    # Toutes les 15 minutes entre 07h00 et 22h00 UTC (= 07h-22h Dakar GMT+0)
+    # Cron GitHub Actions : minimum 5 min, précision ~1-2 min
+    - cron: '0,15,30,45 7-22 * * *'
+
+  # Permet aussi de déclencher manuellement depuis GitHub
   workflow_dispatch:
 
 jobs:
-  send-push:
+  send-notification:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Envoyer notification via Ntfy
+      - name: Envoyer la notification AgroTIC via ntfy.sh
         run: |
           curl -s \
-            -H "Title: AgroTIC - Nouvelle notion disponible" \
+            -H "Title: 🌱 AgroTIC — Nouvelle notion" \
             -H "Priority: default" \
             -H "Tags: seedling" \
-            -d "Une nouvelle notion t'attend. Ouvre l'app pour la decouvrir et gagner des XP !" \
+            -d "Une nouvelle notion t'attend. Ouvre l'app pour la découvrir et gagner des XP !" \
             https://ntfy.sh/agrotic-bibliotheque-vivante-mustaf0623
-          echo "[AgroTIC] Notification envoyee avec succes !"
