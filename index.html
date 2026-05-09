@@ -1146,6 +1146,11 @@ const THEMES = {
   foresterie: {label:"Foresterie & Ressources",     icon:"🌳", color:"#5a9e50"},
 };
 
+// ══════════════════════════════════════════════════
+//  CONFIGURATION PUSH NOTIFICATIONS
+// ══════════════════════════════════════════════════
+const VAPID_PUBLIC_KEY = 'BNSxO-khspE_803d4n0QbycmkrwCyQKm8z4iOtOb9xG7ElCOJLDP4BwiraklCbOBqQR3yAHkY0cdSCyPZbKp1cU'; // REMPLACER PAR VOTRE CLÉ PUBLIQUE VAPID
+
 const DATA = [
 // ── SOL ──
 {id:1,icon:"🌍",theme:"sol",title:"Biologie du Sol : les Micro-organismes, Ingénieurs de la Fertilité",
@@ -4985,14 +4990,15 @@ function runInference(lastNotionId){
 // ── Génération de quiz via API Claude ──
 let _expertQueue = [];
 let _expertActive = false;
+const _fallbackRetryCounts = {};
 
-async function generateQuiz(notion){
+async function generateQuiz(notion, { retryCount = 0 } = {}){
   const card = document.getElementById('eq-card');
   if(!card) return;
 
   // Si hors-ligne : utiliser quiz statique immédiatement
   if(!navigator.onLine){
-    renderFallbackQuiz(notion);
+    renderFallbackQuiz(notion, retryCount);
     return;
   }
 
@@ -5049,7 +5055,7 @@ Format exact :
   } catch(err){
     console.error('[Expert] Quiz generation error:', err);
     // Fallback : quiz simplifié sans IA
-    renderFallbackQuiz(notion);
+    renderFallbackQuiz(notion, retryCount);
   }
 }
 
@@ -5090,17 +5096,26 @@ function renderQuiz(notion, quiz){
     </div>`;
 }
 
-function renderFallbackQuiz(notion){
+function renderFallbackQuiz(notion, retryCount = 0){
   // Use static pre-written quiz if available
   const sq = STATIC_QUIZZES[notion.id];
   if(sq){
-    renderQuiz(notion, {
+    let quiz = {
       question: sq.q,
-      options: sq.o,
+      options: sq.o.slice(),
       correct: sq.c,
       explanation: sq.e,
       key_fact: sq.f
-    });
+    };
+
+    if(retryCount > 0){
+      const shuffled = shuffleQuizOptions(quiz.options, quiz.correct);
+      quiz.options = shuffled.options;
+      quiz.correct = shuffled.correct;
+      quiz.question = getFallbackRetryPrompt(notion, retryCount);
+    }
+
+    renderQuiz(notion, quiz);
     return;
   }
   // Last resort fallback
@@ -5123,10 +5138,40 @@ function renderFallbackQuiz(notion){
     </div>`;
 }
 
+function shuffleQuizOptions(options, correctIndex){
+  const indexed = options.map((opt, idx) => ({opt, idx}));
+  for (let i = indexed.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indexed[i], indexed[j]] = [indexed[j], indexed[i]];
+  }
+  const newOptions = indexed.map(item => item.opt);
+  const newCorrect = indexed.findIndex(item => item.idx === correctIndex);
+  return { options: newOptions, correct: newCorrect };
+}
+
+function getFallbackRetryPrompt(notion, retryCount){
+  const prompts = [
+    `Parmi ces propositions, laquelle est correcte à propos de "${notion.title}" ?`,
+    `Quelle affirmation décrit le mieux cette notion ?`,
+    `Quel point est vrai concernant "${notion.title}" ?`
+  ];
+  return prompts[(retryCount - 1) % prompts.length];
+}
 
 function skipQuiz(notionId){
   setNotion_mastery(notionId, Math.max(1, getNotion_mastery(notionId)));
   closeExpert();
+}
+
+function retryQuiz(notionId){
+  const notion = DATA.find(n => n.id === notionId);
+  if (!notion) return;
+  _fallbackRetryCounts[notionId] = (_fallbackRetryCounts[notionId] || 0) + 1;
+  const ov = document.getElementById('expert-overlay');
+  if (ov && !ov.classList.contains('open')) {
+    ov.classList.add('open');
+  }
+  generateQuiz(notion, { retryCount: _fallbackRetryCounts[notionId] });
 }
 
 function afterQuiz(notionId){
@@ -5286,8 +5331,23 @@ function selectAnswer(chosen, correct, _unused, notionId) {
             const currentMastery = getNotion_mastery(idToSave);
             if (currentMastery < 1) setNotion_mastery(idToSave, 1);
             if (typeof renderConsolidNotions === 'function') renderConsolidNotions();
+
+            if (nextBtn) {
+                nextBtn.textContent = 'Réessayer';
+                nextBtn.onclick = () => retryQuiz(idToSave);
+            }
         }
     }
+}
+
+function retryQuiz(notionId) {
+    const notion = DATA.find(n => n.id === notionId);
+    if (!notion) return;
+    const ov = document.getElementById('expert-overlay');
+    if (ov && !ov.classList.contains('open')) {
+        ov.classList.add('open');
+    }
+    generateQuiz(notion);
 }
 </script>
 <!-- ══ ONBOARDING ══ -->
@@ -5349,7 +5409,7 @@ function activerNotifications(){
   Notification.requestPermission().then(function(perm){
     console.log('[AgroTIC] Permission:', perm);
     if (perm === 'granted') {
-      subscribeToNtfy();
+      subscribeToPush();
       
       // ── Synchroniser le timer avec le SW ──
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -5397,7 +5457,7 @@ function closeOnboardingAndAskNotif(){
     Notification.requestPermission().then(function(perm){
       console.log('[AgroTIC] Permission notifications:', perm);
       if (perm === 'granted') {
-        subscribeToNtfy();
+        subscribeToPush();
         
         // ── Synchroniser le timer avec le SW ──
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -5645,23 +5705,54 @@ async function requestNotifPermission() {
   return perm;
 }
 
-function subscribeToNtfy() {
-  if (!('serviceWorker' in navigator)) return;
+function subscribeToPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
   // Réinitialiser si la permission a été révoquée
   if (Notification.permission !== 'granted') {
-    localStorage.removeItem('agrotic_ntfy_subscribed');
+    localStorage.removeItem('agrotic_push_subscribed');
     return;
   }
-  if (localStorage.getItem('agrotic_ntfy_subscribed')) return;
+
+  if (localStorage.getItem('agrotic_push_subscribed')) return;
 
   navigator.serviceWorker.ready.then(reg => {
-    reg.active && reg.active.postMessage({
-      type: 'NTFY_SUBSCRIBE',
-      topic: NTFY_TOPIC
+    reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    }).then(subscription => {
+      console.log('[AgroTIC] Abonné aux push notifications:', subscription.endpoint);
+
+      // Envoyer l'abonnement au serveur (GitHub Actions via repository_dispatch)
+      fetch('https://api.github.com/repos/mustaf0623/AgroTIC-Bibliotheque-Vivante/dispatches', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': 'token ' + (localStorage.getItem('github_token') || '') // Si vous avez un token stocké
+        },
+        body: JSON.stringify({
+          event_type: 'new-push-subscription',
+          client_payload: { subscription: subscription }
+        })
+      }).catch(err => console.log('[AgroTIC] Erreur envoi abonnement:', err));
+
+      localStorage.setItem('agrotic_push_subscribed', '1');
+    }).catch(err => {
+      console.log('[AgroTIC] Erreur abonnement push:', err);
     });
-    localStorage.setItem('agrotic_ntfy_subscribed', '1');
-    console.log('[AgroTIC] Abonné aux notifications Ntfy.');
   });
+}
+
+// Fonction utilitaire pour convertir la clé VAPID
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 // fromBackground=true → notion manquée pendant que l'app était fermée/arrière-plan.
