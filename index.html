@@ -5246,14 +5246,12 @@ function checkPendingQuiz(){
   setFact('pending_quiz', null);
   const notion = DATA.find(n => n.id === parseInt(pendingId));
   if(!notion) return;
-  // Lancer le quiz après un délai
-  setTimeout(() => {
-    const ov = document.getElementById('expert-overlay');
-    if(ov){
-      ov.classList.add('open');
-      generateQuiz(notion);
-    }
-  }, 600);
+  // Lancer le quiz immédiatement après fermeture
+  const ov = document.getElementById('expert-overlay');
+  if(ov){
+    ov.classList.add('open');
+    generateQuiz(notion);
+  }
 }
 
 // ── Mise à jour de openNotion pour déclencher le quiz ──
