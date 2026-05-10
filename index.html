@@ -4996,6 +4996,10 @@ async function generateQuiz(notion, { retryCount = 0 } = {}){
   const card = document.getElementById('eq-card');
   if(!card) return;
 
+  const retryInstruction = retryCount > 0
+    ? `Si c'est une nouvelle tentative de quiz pour cette notion, reformule la question et les choix pour éviter toute répétition avec la version précédente.`
+    : '';
+
   // Si hors-ligne : utiliser quiz statique immédiatement
   if(!navigator.onLine){
     renderFallbackQuiz(notion, retryCount);
@@ -5032,7 +5036,8 @@ Format exact :
   "correct": 0,
   "explanation": "explication courte de la bonne réponse (2-3 phrases)",
   "key_fact": "fait agronomique clé à retenir de cette notion"
-}`,
+}
+${retryInstruction}`,
         messages: [{
           role: "user",
           content: `Notion : "${notion.title}"\n\nContenu résumé : ${notion.preview}\n\nContexte : ${notion.body.replace(/<[^>]+>/g,'').substring(0,600)}`
@@ -5330,7 +5335,15 @@ function selectAnswer(chosen, correct, _unused, notionId) {
         if (idToSave) {
             const currentMastery = getNotion_mastery(idToSave);
             if (currentMastery < 1) setNotion_mastery(idToSave, 1);
+
+            if (!read.includes(idToSave)) {
+                read.push(idToSave);
+                localStorage.setItem('rd', JSON.stringify(read));
+            }
+
             if (typeof renderConsolidNotions === 'function') renderConsolidNotions();
+            if (typeof renderReadNotions === 'function') renderReadNotions();
+            if (typeof renderProgress === 'function') renderProgress();
 
             if (nextBtn) {
                 nextBtn.textContent = 'Réessayer';
@@ -5343,11 +5356,12 @@ function selectAnswer(chosen, correct, _unused, notionId) {
 function retryQuiz(notionId) {
     const notion = DATA.find(n => n.id === notionId);
     if (!notion) return;
+    _fallbackRetryCounts[notionId] = (_fallbackRetryCounts[notionId] || 0) + 1;
     const ov = document.getElementById('expert-overlay');
     if (ov && !ov.classList.contains('open')) {
         ov.classList.add('open');
     }
-    generateQuiz(notion);
+    generateQuiz(notion, { retryCount: _fallbackRetryCounts[notionId] });
 }
 </script>
 <!-- ══ ONBOARDING ══ -->
@@ -5724,7 +5738,7 @@ function subscribeToPush() {
       console.log('[AgroTIC] Abonné aux push notifications:', subscription.endpoint);
 
       // Envoyer l'abonnement au serveur (GitHub Actions via repository_dispatch)
-      fetch('https://api.github.com/repos/mustaf0623/AgroTIC-Bibliotheque-Vivante/dispatches', {
+      fetch('https://api.github.com/repos/mustaf0623/Abv-AgroTIC-Bibliotheque-Vivante/dispatches', {
         method: 'POST',
         headers: {
           'Accept': 'application/vnd.github.v3+json',
