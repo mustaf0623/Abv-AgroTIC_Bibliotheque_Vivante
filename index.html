@@ -3832,12 +3832,11 @@ function openNotion(n){
     renderReadNotions && renderReadNotions();
   }
   // Proposer le quiz :
-  // - à la première lecture (wasNew)
-  // - si lue mais pas encore maîtrisée (mastery=1 = mauvaise réponse ou jamais tenté)
-  // - jamais si déjà maîtrisée (mastery=3)
+  // - à la première lecture (wasNew) : après fermeture du modal
+  // - si lue mais pas encore maîtrisée (mastery < 3) : après fermeture du modal (permet relecture)
   const mastery = getNotion_mastery(n.id);
-  if(wasNew || mastery === 1){
-    triggerExpertQuiz(n);
+  if(wasNew || mastery < 3){
+    triggerExpertQuiz(n); // Quiz après fermeture du modal
   }
   document.getElementById('mCats').innerHTML=n.badgeLabels.map((l,i)=>`<span class="badge ${n.badges[i]}">${l}</span>`).join('')+`<span class="badge" style="background:rgba(26,53,32,.3);color:var(--fern);border:1px solid rgba(90,158,80,.2)">${THEMES[n.theme].icon} ${THEMES[n.theme].label}</span>`;
   document.getElementById('mTitle').textContent=n.title;
